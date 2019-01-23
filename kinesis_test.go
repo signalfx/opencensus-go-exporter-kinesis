@@ -15,15 +15,12 @@
 package kinesis
 
 import (
-	//"encoding/binary"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/ptypes"
+	gen "github.com/jaegertracing/jaeger/model"
 	"go.opencensus.io/trace"
-
-	gen "github.com/omnition/opencensus-go-exporter-kinesis/internal/gen-go/jaeger"
 )
 
 // TODO(jbd): Test export.
@@ -35,7 +32,6 @@ func Test_spanDataToJaegerPB(t *testing.T) {
 	statusCodeValue := int64(2)
 	statusMessage := "error"
 	now := time.Now()
-	pbNow, _ := ptypes.TimestampProto(now)
 
 	e := Exporter{}
 
@@ -76,22 +72,22 @@ func Test_spanDataToJaegerPB(t *testing.T) {
 				Status: trace.Status{Code: trace.StatusCodeUnknown, Message: "error"},
 			},
 			want: &gen.Span{
-				TraceId:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-				SpanId:        []byte{1, 2, 3, 4, 5, 6, 7, 8},
+				TraceID:       traceIDMapper(trace.TraceID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}),
+				SpanID:        spanIDMapper(trace.SpanID{1, 2, 3, 4, 5, 6, 7, 8}),
 				OperationName: "/foo",
-				StartTime:     pbNow,
-				Duration:      ptypes.DurationProto(time.Duration(0)),
-				Tags: []*gen.KeyValue{
+				StartTime:     now,
+				Duration:      time.Duration(0),
+				Tags: []gen.KeyValue{
 					{Key: "key", VType: gen.ValueType_STRING, VStr: keyValue},
 					{Key: "status.code", VType: gen.ValueType_INT64, VInt64: statusCodeValue},
 					{Key: "status.message", VType: gen.ValueType_STRING, VStr: statusMessage},
 				},
-				Logs: []*gen.Log{
-					{Timestamp: pbNow, Fields: []*gen.KeyValue{
+				Logs: []gen.Log{
+					{Timestamp: now, Fields: []gen.KeyValue{
 						{Key: "answer", VType: gen.ValueType_INT64, VInt64: answerValue},
 						{Key: "message", VType: gen.ValueType_STRING, VStr: statusMessage},
 					}},
-					{Timestamp: pbNow, Fields: []*gen.KeyValue{
+					{Timestamp: now, Fields: []gen.KeyValue{
 						{Key: "result", VType: gen.ValueType_BOOL, VBool: resultValue},
 						{Key: "message", VType: gen.ValueType_STRING, VStr: statusMessage},
 					}},

@@ -16,14 +16,10 @@
 package kinesis // import "github.com/omnition/opencensus-go-exporter-kinesis"
 
 import (
-	//"bytes"
-	// "encoding/binary"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	//"io"
-	//"io/ioutil"
 	"log"
-	//"net/http"
 	"time"
 
 	producer "github.com/a8m/kinesis-producer"
@@ -33,11 +29,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/gogo/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
+	gen "github.com/jaegertracing/jaeger/model"
 	"go.opencensus.io/trace"
 	"google.golang.org/api/support/bundler"
-
-	gen "github.com/omnition/opencensus-go-exporter-kinesis/internal/gen-go/jaeger"
 )
 
 const defaultServiceName = "OpenCensus"
@@ -110,9 +104,12 @@ func NewExporter(o Options) (*Exporter, error) {
 		service = defaultServiceName
 	}
 	// tags := make([]*gen.Tag, len(o.Process.Tags))
-	tags := make([]*gen.KeyValue, len(o.Process.Tags))
-	for i, tag := range o.Process.Tags {
-		tags[i] = attributeToKeyValue(tag.key, tag.value)
+	tags := make([]gen.KeyValue, 0, len(o.Process.Tags))
+	for _, tag := range o.Process.Tags {
+		kv, err := attributeToKeyValue(tag.key, tag.value)
+		if err == nil {
+			tags = append(tags, kv)
+		}
 	}
 
 	// create KPL producer
@@ -233,7 +230,7 @@ func (e *Exporter) upload(spans []*gen.Span) error {
 			errors = append(errors, err)
 			continue
 		}
-		err = e.producer.Put(encoded, traceIdToString(span.TraceId))
+		err = e.producer.Put(encoded, span.TraceID.String())
 		if err != nil {
 			errors = append(errors, err)
 			continue
@@ -253,44 +250,47 @@ func (e *Exporter) ExportSpan(data *trace.SpanData) {
 }
 
 func (e *Exporter) spanDataToJaegerPB(data *trace.SpanData) *gen.Span {
-	tags := make([]*gen.KeyValue, 0, len(data.Attributes))
+	tags := make([]gen.KeyValue, 0, len(data.Attributes))
 	for k, v := range data.Attributes {
-		tag := attributeToKeyValue(k, v)
-		if tag != nil {
+		tag, err := attributeToKeyValue(k, v)
+		if err == nil {
 			tags = append(tags, tag)
 		}
 	}
 
-	tags = append(tags,
-		attributeToKeyValue("status.code", data.Status.Code),
-		attributeToKeyValue("status.message", data.Status.Message),
-	)
+	statusCodeTag, err := attributeToKeyValue("status.code", data.Status.Code)
+	if err == nil {
+		tags = append(tags, statusCodeTag)
+	}
+	statusMsgTag, err := attributeToKeyValue("status.message", data.Status.Message)
+	if err == nil {
+		tags = append(tags, statusMsgTag)
+	}
 
-	var logs []*gen.Log
+	var logs []gen.Log
 	for _, a := range data.Annotations {
-		fields := make([]*gen.KeyValue, 0, len(a.Attributes))
+		fields := make([]gen.KeyValue, 0, len(a.Attributes))
 		for k, v := range a.Attributes {
-			tag := attributeToKeyValue(k, v)
-			if tag != nil {
+			tag, err := attributeToKeyValue(k, v)
+			if err == nil {
 				fields = append(fields, tag)
 			}
 		}
-		fields = append(fields, attributeToKeyValue("message", a.Message))
-		tsp, err := ptypes.TimestampProto(a.Time)
-		if err != nil {
-			// TODO: log error and fallback to some other value?
+		field, err := attributeToKeyValue("message", a.Message)
+		if err == nil {
+			fields = append(fields, field)
 		}
-		logs = append(logs, &gen.Log{
-			Timestamp: tsp,
+		logs = append(logs, gen.Log{
+			Timestamp: a.Time,
 			Fields:    fields,
 		})
 	}
 
-	var refs []*gen.SpanRef
+	var refs []gen.SpanRef
 	for _, link := range data.Links {
-		ref := &gen.SpanRef{
-			TraceId: link.TraceID[:],
-			SpanId:  link.SpanID[:],
+		ref := gen.SpanRef{
+			TraceID: traceIDMapper(link.TraceID),
+			SpanID:  spanIDMapper(link.SpanID),
 		}
 		switch link.Type {
 		case trace.LinkTypeChild:
@@ -300,20 +300,16 @@ func (e *Exporter) spanDataToJaegerPB(data *trace.SpanData) *gen.Span {
 		}
 		refs = append(refs, ref)
 	}
-	startTime, err := ptypes.TimestampProto(data.StartTime)
-	if err != nil {
-		// TODO: handle
-	}
 
 	// REVIEW: verify flags (traceoptions bit to denote IsSampled) translate well to jaeger
 	// REVIEW: Is it correct attact process info like this here?
 	return &gen.Span{
-		TraceId:       data.TraceID[:],
-		SpanId:        data.SpanID[:],
+		TraceID:       traceIDMapper(data.TraceID),
+		SpanID:        spanIDMapper(data.SpanID),
 		OperationName: name(data),
-		Flags:         uint32(data.TraceOptions),
-		StartTime:     startTime,
-		Duration:      ptypes.DurationProto(data.EndTime.Sub(data.StartTime)),
+		Flags:         gen.Flags(data.TraceOptions),
+		StartTime:     data.StartTime,
+		Duration:      data.EndTime.Sub(data.StartTime),
 		Tags:          tags,
 		Logs:          logs,
 		References:    refs,
@@ -332,44 +328,58 @@ func name(sd *trace.SpanData) string {
 	return n
 }
 
-func attributeToKeyValue(key string, a interface{}) *gen.KeyValue {
-	var kv *gen.KeyValue
+func attributeToKeyValue(key string, a interface{}) (gen.KeyValue, error) {
+	var kv gen.KeyValue
 	switch value := a.(type) {
 	case bool:
-		kv = &gen.KeyValue{
+		kv = gen.KeyValue{
 			Key:   key,
 			VBool: value,
 			VType: gen.ValueType_BOOL,
 		}
 	case string:
-		kv = &gen.KeyValue{
+		kv = gen.KeyValue{
 			Key:   key,
 			VStr:  value,
 			VType: gen.ValueType_STRING,
 		}
 	case int64:
-		kv = &gen.KeyValue{
+		kv = gen.KeyValue{
 			Key:    key,
 			VInt64: value,
 			VType:  gen.ValueType_INT64,
 		}
 	case int32:
 		v := int64(value)
-		kv = &gen.KeyValue{
+		kv = gen.KeyValue{
 			Key:    key,
 			VInt64: v,
 			VType:  gen.ValueType_INT64,
 		}
 	case float64:
-		kv = &gen.KeyValue{
+		kv = gen.KeyValue{
 			Key:      key,
 			VFloat64: value,
 			VType:    gen.ValueType_FLOAT64,
 		}
+	default:
+		return gen.KeyValue{}, fmt.Errorf("could not translate tag")
 	}
-	return kv
+	return kv, nil
 }
 
-func traceIdToString(traceId []byte) string {
-	return fmt.Sprintf("%02x", traceId)
+func bytesToInt64(buf []byte) uint64 {
+	u := binary.BigEndian.Uint64(buf)
+	return uint64(u)
+}
+
+func traceIDMapper(traceID trace.TraceID) gen.TraceID {
+	return gen.TraceID{
+		Low:  bytesToInt64(traceID[8:16]),
+		High: bytesToInt64(traceID[0:8]),
+	}
+}
+
+func spanIDMapper(spanID trace.SpanID) gen.SpanID {
+	return gen.SpanID(bytesToInt64(spanID[:]))
 }

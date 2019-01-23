@@ -43,7 +43,6 @@ func ExampleNewExporter_processTags() {
 	// Register the Kinesis exporter to be able to retrieve
 	// the collected spans.
 	exporter, err := kinesis.NewExporter(kinesis.Options{
-		AgentEndpoint: "localhost:6831",
 		Process: kinesis.Process{
 			ServiceName: "trace-demo",
 			Tags: []kinesis.Tag{
