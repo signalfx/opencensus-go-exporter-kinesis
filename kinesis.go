@@ -23,7 +23,6 @@ import (
 	"time"
 
 	producer "github.com/a8m/kinesis-producer"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -31,7 +30,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	gen "github.com/jaegertracing/jaeger/model"
 	"go.opencensus.io/trace"
-	"google.golang.org/api/support/bundler"
 )
 
 const defaultServiceName = "OpenCensus"
@@ -54,6 +52,7 @@ type Options struct {
 	// only Jaeger is supported right now
 	Encoding string
 
+	// TODO: reconsider this. we probably don't need it here as queued collector would do in-mem batching
 	//BufferMaxCount defines the total number of traces that can be buffered in memory
 	BufferMaxCount int
 
@@ -86,16 +85,6 @@ func NewExporter(o Options) (*Exporter, error) {
 		return nil, errors.New("invalid option for Encoding. Valid choices are: jaeger")
 	}
 
-	// TODO: Set defaults here
-
-	onError := func(err error) {
-		if o.OnError != nil {
-			o.OnError(err)
-			return
-		}
-		log.Printf("Error puttings spans to Kinesis: %v", err)
-	}
-
 	service := o.Process.ServiceName
 	if service == "" && o.ServiceName != "" {
 		// fallback to old service name if specified
@@ -123,7 +112,17 @@ func NewExporter(o Options) (*Exporter, error) {
 		cfgs = append(cfgs, &aws.Config{Endpoint: aws.String(o.AWSKinesisEndpoint)})
 	}
 	client := kinesis.New(sess, cfgs...)
-
+	// Make sure stream exists and we can access it. This makes the collector crash
+	// early when misconfigured.
+	_, err := client.DescribeStream(&kinesis.DescribeStreamInput{
+		StreamName: aws.String(o.StreamName),
+		Limit:      aws.Int64(1),
+	})
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Kinesis stream %s not available: %s", o.StreamName, err.Error(),
+		)
+	}
 	pr := producer.New(&producer.Config{
 		StreamName:    o.StreamName,
 		BatchSize:     o.KPLBatchSize,
@@ -142,23 +141,24 @@ func NewExporter(o Options) (*Exporter, error) {
 			Tags:        tags,
 		},
 		producer: pr,
+		onError: func(err error) {
+			if o.OnError != nil {
+				o.OnError(err)
+				return
+			}
+		},
 	}
-	// TODO: hook onError with KPL lib
 
-	bundler := bundler.NewBundler((*gen.Span)(nil), func(bundle interface{}) {
-		if err := e.upload(bundle.([]*gen.Span)); err != nil {
-			onError(err)
+	e.producer.Start()
+	go func() {
+		for r := range e.producer.NotifyFailures() {
+			// kinesis producer internally retries transient errors while
+			// putting records to kinesis.
+			// It only notifies impossible to recover errors like a stream
+			// not existing.
+			fmt.Println("kinesis put failed:: " + r.Error())
 		}
-	})
-
-	// Set BufferedByteLimit with the total number of spans that are permissible to be held in memory.
-	// This needs to be done since the size of messages is always set to 1. Failing to set this would allow
-	// 1G messages to be held in memory since that is the default value of BufferedByteLimit.
-	if o.BufferMaxCount != 0 {
-		bundler.BufferedByteLimit = o.BufferMaxCount
-	}
-
-	e.bundler = bundler
+	}()
 
 	return e, nil
 }
@@ -199,17 +199,16 @@ func Int64Tag(key string, value int64) Tag {
 type Exporter struct {
 	process  *gen.Process
 	producer *producer.Producer
-
-	bundler *bundler.Bundler
+	onError  func(err error)
 }
 
-var _ trace.Exporter = (*Exporter)(nil)
+// var _ trace.Exporter = (*Exporter)(nil)
 
 // Flush waits for exported trace spans to be uploaded.
 //
 // This is useful if your program is ending and you do not want to lose recent spans.
 func (e *Exporter) Flush() {
-	// e.bundler.Flush()
+	e.producer.Stop()
 }
 
 func (e *Exporter) upload(spans []*gen.Span) error {
@@ -244,9 +243,22 @@ func (e *Exporter) upload(spans []*gen.Span) error {
 }
 
 // ExportSpan exports a SpanData to Jaeger.
-func (e *Exporter) ExportSpan(data *trace.SpanData) {
-	e.bundler.Add(e.spanDataToJaegerPB(data), 1)
-	// TODO(jbd): Handle oversized bundlers.
+func (e *Exporter) ExportSpan(span *gen.Span) {
+	fmt.Println("exporting spans:: ", span.SpanID)
+	encoded, err := proto.Marshal(span)
+	if err != nil {
+		// TODO: use onerror callback
+		// TODO: handler error
+		fmt.Println("error marshalling span")
+		return
+	}
+
+	err = e.producer.Put(encoded, span.TraceID.String())
+	if err != nil {
+		fmt.Println("error pushing to producer")
+		// TODO: use onerror callback
+		// TODO: handler error
+	}
 }
 
 func (e *Exporter) spanDataToJaegerPB(data *trace.SpanData) *gen.Span {
@@ -383,3 +395,4 @@ func traceIDMapper(traceID trace.TraceID) gen.TraceID {
 func spanIDMapper(spanID trace.SpanID) gen.SpanID {
 	return gen.SpanID(bytesToInt64(spanID[:]))
 }
+
