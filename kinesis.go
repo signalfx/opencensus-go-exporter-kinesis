@@ -20,22 +20,24 @@ import (
 	"fmt"
 	"time"
 
-	producer "github.com/a8m/kinesis-producer"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/gogo/protobuf/proto"
 	gen "github.com/jaegertracing/jaeger/model"
+	producer "github.com/omnition/kinesis-producer"
+	"go.opencensus.io/stats/view"
+	"go.uber.org/zap"
 )
 
-const defaultServiceName = "OpenCensus"
+const defaultEncoding = "jaeger-proto"
+
+var supportedEncodings = [1]string{defaultEncoding}
 
 // Options are the options to be used when initializing a Jaeger exporter.
 type Options struct {
-	// CollectorEndpoint is the full url to the Jaeger HTTP Thrift collector.
-	// For example, http://localhost:14268/api/traces
-
 	StreamName              string
 	AWSRegion               string
 	AWSRole                 string
@@ -48,21 +50,20 @@ type Options struct {
 	// Encoding defines the format in which spans should be exporter to kinesis
 	// only Jaeger is supported right now
 	Encoding string
+}
 
-	// TODO: reconsider this. we probably don't need it here as queued collector would do in-mem batching
-	//BufferMaxCount defines the total number of traces that can be buffered in memory
-	BufferMaxCount int
-
-	// OnError is the hook to be called when there is
-	// an error occurred when uploading the stats data.
-	// If no custom hook is set, errors are logged.
-	// Optional.
-	OnError func(err error)
+func (o Options) isValidEncoding() bool {
+	for _, e := range supportedEncodings {
+		if e == o.Encoding {
+			return true
+		}
+	}
+	return false
 }
 
 // NewExporter returns a trace.Exporter implementation that exports
 // the collected spans to Jaeger.
-func NewExporter(o Options) (*Exporter, error) {
+func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	if o.AWSRegion == "" {
 		return nil, errors.New("missing AWS Region for Kinesis exporter")
 	}
@@ -71,8 +72,12 @@ func NewExporter(o Options) (*Exporter, error) {
 		return nil, errors.New("missing Stream Name for Kinesis exporter")
 	}
 
-	if o.Encoding != "jaeger" {
-		return nil, errors.New("invalid option for Encoding. Valid choices are: jaeger")
+	if o.Encoding == "" {
+		o.Encoding = defaultEncoding
+	}
+
+	if !o.isValidEncoding() {
+		return nil, fmt.Errorf("invalid option for Encoding. Valid choices are: %v", supportedEncodings)
 	}
 
 	sess := session.Must(session.NewSession(aws.NewConfig().WithRegion(o.AWSRegion)))
@@ -86,15 +91,19 @@ func NewExporter(o Options) (*Exporter, error) {
 	client := kinesis.New(sess, cfgs...)
 	// Make sure stream exists and we can access it. This makes the collector crash
 	// early when misconfigured.
-	_, err := client.DescribeStream(&kinesis.DescribeStreamInput{
-		StreamName: aws.String(o.StreamName),
-		Limit:      aws.Int64(1),
-	})
-	if err != nil {
-		return nil, fmt.Errorf(
-			"Kinesis stream %s not available: %s", o.StreamName, err.Error(),
-		)
-	}
+	/*
+		_, err := client.DescribeStream(&kinesis.DescribeStreamInput{
+			StreamName: aws.String(o.StreamName),
+			Limit:      aws.Int64(1),
+		})
+		if err != nil {
+			return nil, fmt.Errorf(
+				"Kinesis stream %s not available: %s", o.StreamName, err.Error(),
+			)
+		}
+	*/
+	hooks := &kinesisHooks{o.StreamName}
+
 	pr := producer.New(&producer.Config{
 		StreamName:    o.StreamName,
 		BatchSize:     o.KPLBatchSize,
@@ -103,36 +112,40 @@ func NewExporter(o Options) (*Exporter, error) {
 		FlushInterval: time.Second * time.Duration(o.KPLFlushIntervalSeconds),
 		Client:        client,
 		Verbose:       false,
-	})
+	}, hooks)
 
 	e := &Exporter{
 		producer: pr,
-		onError: func(err error) {
-			if o.OnError != nil {
-				o.OnError(err)
-				return
-			}
-		},
+		logger:   logger,
+	}
+
+	v := metricViews()
+	if err := view.Register(v...); err != nil {
+		return nil, err
 	}
 
 	e.producer.Start()
 	go func() {
 		for r := range e.producer.NotifyFailures() {
-			// kinesis producer internally retries transient errors while
-			// putting records to kinesis.
-			// It only notifies impossible to recover errors like a stream
-			// not existing.
-			fmt.Println("kinesis put failed:: " + r.Error())
+			var errCode string
+			aErr, ok := r.Err.(awserr.Error)
+			if !ok {
+				errCode = r.Err.Error()
+			} else {
+				errCode = aErr.Code()
+			}
+			logger.Error("err pushing records to kinesis: ", zap.Error(r.Err))
+			hooks.OnPutErr(errCode)
 		}
 	}()
 
 	return e, nil
 }
 
-// Exporter is an implementation of trace.Exporter that uploads spans to Jaeger.
+// Exporter takes spans in jaeger proto format and forwards them to a kinesis stream
 type Exporter struct {
 	producer *producer.Producer
-	onError  func(err error)
+	logger   *zap.Logger
 }
 
 // Note: We do not implement trace.Exporter interface yet but it is planned
@@ -143,16 +156,11 @@ func (e *Exporter) Flush() {
 }
 
 // ExportSpan exports a Jaeger protbuf span to Kinesis
-func (e *Exporter) ExportSpan(span *gen.Span) {
+func (e *Exporter) ExportSpan(span *gen.Span) error {
 	encoded, err := proto.Marshal(span)
 	if err != nil {
-		e.onError(err)
-		return
+		return err
 	}
 
-	err = e.producer.Put(encoded, span.TraceID.String())
-	if err != nil {
-		e.onError(err)
-	}
+	return e.producer.Put(encoded, span.TraceID.String())
 }
-
