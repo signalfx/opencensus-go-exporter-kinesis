@@ -38,6 +38,7 @@ var supportedEncodings = [1]string{defaultEncoding}
 
 // Options are the options to be used when initializing a Jaeger exporter.
 type Options struct {
+	Name                    string
 	StreamName              string
 	AWSRegion               string
 	AWSRole                 string
@@ -91,18 +92,19 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	client := kinesis.New(sess, cfgs...)
 	// Make sure stream exists and we can access it. This makes the collector crash
 	// early when misconfigured.
-	/*
-		_, err := client.DescribeStream(&kinesis.DescribeStreamInput{
-			StreamName: aws.String(o.StreamName),
-			Limit:      aws.Int64(1),
-		})
-		if err != nil {
-			return nil, fmt.Errorf(
-				"Kinesis stream %s not available: %s", o.StreamName, err.Error(),
-			)
-		}
-	*/
-	hooks := &kinesisHooks{o.StreamName}
+	_, err := client.DescribeStream(&kinesis.DescribeStreamInput{
+		StreamName: aws.String(o.StreamName),
+		Limit:      aws.Int64(1),
+	})
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Kinesis stream %s not available: %s", o.StreamName, err.Error(),
+		)
+	}
+	hooks := &kinesisHooks{
+		o.Name,
+		o.StreamName,
+	}
 
 	pr := producer.New(&producer.Config{
 		StreamName:    o.StreamName,

@@ -22,9 +22,10 @@ import (
 
 // Keys and stats for telemetry.
 var (
-	tagStreamName, _  = tag.NewKey("stream_name")
-	tagFlushReason, _ = tag.NewKey("flush_reason")
-	tagErrCode, _     = tag.NewKey("err_code")
+	tagExporterName, _ = tag.NewKey("exporter")
+	tagStreamName, _   = tag.NewKey("stream_name")
+	tagFlushReason, _  = tag.NewKey("flush_reason")
+	tagErrCode, _      = tag.NewKey("err_code")
 
 	statPutRequests = stats.Int64("kinesis_put_requests", "number of put requests made", stats.UnitDimensionless)
 	statPutBatches  = stats.Int64("kinesis_put_batches", "number of batches pushed to a stream", stats.UnitDimensionless)

@@ -7,28 +7,29 @@ import (
 )
 
 type kinesisHooks struct {
-	streamName string
+	exporterName string
+	streamName   string
+}
+
+func (h *kinesisHooks) tags(tags ...tag.Mutator) []tag.Mutator {
+	tags = append(tags, tag.Upsert(tagStreamName, h.streamName))
+	tags = append(tags, tag.Upsert(tagExporterName, h.exporterName))
+	return tags
 }
 
 func (h *kinesisHooks) OnDrain(size, length int64) {
-	statsTags := []tag.Mutator{tag.Upsert(tagStreamName, h.streamName)}
-
 	stats.RecordWithTags(
 		context.Background(),
-		statsTags,
+		h.tags(),
 		statDrainSize.M(size),
 		statDrainLength.M(length),
 	)
 }
 
 func (h *kinesisHooks) OnPutRecords(batches, records, putLatencyMS int64, reason string) {
-	statsTags := []tag.Mutator{
-		tag.Upsert(tagStreamName, h.streamName),
-		tag.Upsert(tagFlushReason, reason),
-	}
 	stats.RecordWithTags(
 		context.Background(),
-		statsTags,
+		h.tags(tag.Upsert(tagFlushReason, reason)),
 		statPutRequests.M(1),
 		statPutBatches.M(batches),
 		statPutSpans.M(records),
@@ -37,9 +38,9 @@ func (h *kinesisHooks) OnPutRecords(batches, records, putLatencyMS int64, reason
 }
 
 func (h *kinesisHooks) OnPutErr(errCode string) {
-	statsTags := []tag.Mutator{
-		tag.Upsert(tagStreamName, h.streamName),
-		tag.Upsert(tagErrCode, errCode),
-	}
-	stats.RecordWithTags(context.Background(), statsTags, statPutErrors.M(1))
+	stats.RecordWithTags(
+		context.Background(),
+		h.tags(tag.Upsert(tagErrCode, errCode)),
+		statPutErrors.M(1),
+	)
 }
