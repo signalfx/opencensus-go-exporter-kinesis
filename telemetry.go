@@ -41,7 +41,7 @@ var (
 
 // MetricViews return the metrics views according to given telemetry level.
 func metricViews() []*view.View {
-	tagKeys := []tag.Key{tagStreamName, tagFlushReason}
+	tagKeys := []tag.Key{tagExporterName, tagStreamName, tagFlushReason}
 
 	// There are some metrics enabled, return the views.
 	putView := &view.View{
