@@ -33,6 +33,8 @@ var (
 	statPutErrors   = stats.Int64("kinesis_put_errors", "number of errors from put requests", stats.UnitDimensionless)
 	statPutLatency  = stats.Int64("kinesis_put_latency", "time (ms) it took to complete put requests", stats.UnitMilliseconds)
 
+	statDroppedBatches = stats.Int64("kinesis_dropped_batches", "number of batches dropped by producer", stats.UnitDimensionless)
+
 	statDrainSize   = stats.Int64("kinesis_drain_size", "size of batches when drained from queue", stats.UnitBytes)
 	statDrainLength = stats.Int64("kinesis_drain_length", "number of batches drained from queue", stats.UnitDimensionless)
 )
@@ -85,6 +87,14 @@ func metricViews() []*view.View {
 		Aggregation: latencyDistributionAggregation,
 	}
 
+	droppedView := &view.View{
+		Name:        statDroppedBatches.Name(),
+		Measure:     statDroppedBatches,
+		Description: "Number of batches dropped due to recurring errors.",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
 	drainSizeView := &view.View{
 		Name:        statDrainSize.Name(),
 		Measure:     statDrainSize,
@@ -103,6 +113,6 @@ func metricViews() []*view.View {
 
 	return []*view.View{
 		putView, batchesView, spansView, errorsView, putLatencyView,
-		drainSizeView, drainLengthView,
+		droppedView, drainSizeView, drainLengthView,
 	}
 }

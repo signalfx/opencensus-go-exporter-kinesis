@@ -9,7 +9,7 @@ require (
 	github.com/gogo/protobuf v1.2.0
 	github.com/golang/protobuf v1.2.0
 	github.com/jaegertracing/jaeger v1.8.2
-	github.com/omnition/kinesis-producer v0.3.0
+	github.com/omnition/kinesis-producer v0.4.0
 	github.com/spf13/viper v1.3.1
 	go.opencensus.io v0.18.1-0.20181204023538-aab39bd6a98b
 	go.uber.org/zap v1.9.1

@@ -44,3 +44,11 @@ func (h *kinesisHooks) OnPutErr(errCode string) {
 		statPutErrors.M(1),
 	)
 }
+
+func (h *kinesisHooks) OnDropped(numRecords int64) {
+	stats.RecordWithTags(
+		context.Background(),
+		h.tags(),
+		statDroppedBatches.M(numRecords),
+	)
+}

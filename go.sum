@@ -90,6 +90,8 @@ github.com/mitchellh/mapstructure v1.1.2 h1:fmNYVwqnSfB9mZU6OS2O6GsXM+wcskZDuKQz
 github.com/mitchellh/mapstructure v1.1.2/go.mod h1:FVVH3fgwuzCH5S8UJGiWEs2h04kUh9fWfEaFds41c1Y=
 github.com/omnition/kinesis-producer v0.3.0 h1:f4pfiJ+rIVJ0Kfb17Ee/9mbYj3qJ6nhppPxs6T+E6Ro=
 github.com/omnition/kinesis-producer v0.3.0/go.mod h1:BpTxPsr3A/xs76tuhDcVyxFFJtbRs5pYOu+B0BCxdZI=
+github.com/omnition/kinesis-producer v0.4.0 h1:Sj1smZaq9MWl920RcqvYZLRDCeFNoRW0NzlU/1oXaZ8=
+github.com/omnition/kinesis-producer v0.4.0/go.mod h1:BpTxPsr3A/xs76tuhDcVyxFFJtbRs5pYOu+B0BCxdZI=
 github.com/opentracing/opentracing-go v1.0.2 h1:3jA2P6O1F9UOrWVpwrIo17pu01KWvNWg4X946/Y5Zwg=
 github.com/opentracing/opentracing-go v1.0.2/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/openzipkin/zipkin-go v0.1.1/go.mod h1:NtoC/o8u3JlF1lSlyPNswIbeQH9bJTmOf0Erfk+hxe8=
