@@ -17,22 +17,23 @@ func (h *kinesisHooks) tags(tags ...tag.Mutator) []tag.Mutator {
 	return tags
 }
 
-func (h *kinesisHooks) OnDrain(size, length int64) {
+func (h *kinesisHooks) OnDrain(bytes, length int64) {
 	stats.RecordWithTags(
 		context.Background(),
 		h.tags(),
-		statDrainSize.M(size),
+		statDrainBytes.M(bytes),
 		statDrainLength.M(length),
 	)
 }
 
-func (h *kinesisHooks) OnPutRecords(batches, records, putLatencyMS int64, reason string) {
+func (h *kinesisHooks) OnPutRecords(batches, spans, bytes, putLatencyMS int64, reason string) {
 	stats.RecordWithTags(
 		context.Background(),
 		h.tags(tag.Upsert(tagFlushReason, reason)),
 		statPutRequests.M(1),
 		statPutBatches.M(batches),
-		statPutSpans.M(records),
+		statPutSpans.M(spans),
+		statPutBytes.M(bytes),
 		statPutLatency.M(putLatencyMS),
 	)
 }
@@ -45,10 +46,12 @@ func (h *kinesisHooks) OnPutErr(errCode string) {
 	)
 }
 
-func (h *kinesisHooks) OnDropped(numRecords int64) {
+func (h *kinesisHooks) OnDropped(batches, spans, bytes int64) {
 	stats.RecordWithTags(
 		context.Background(),
 		h.tags(),
-		statDroppedBatches.M(numRecords),
+		statDroppedBatches.M(batches),
+		statDroppedSpans.M(spans),
+		statDroppedBytes.M(bytes),
 	)
 }

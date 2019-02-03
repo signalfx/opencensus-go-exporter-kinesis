@@ -20,6 +20,10 @@ import (
 	"go.opencensus.io/tag"
 )
 
+var latencyDistributionAggregation = view.Distribution(
+	10, 25, 50, 75, 100, 250, 500, 750, 1000, 2000, 3000, 4000, 5000, 10000, 20000, 30000, 50000,
+)
+
 // Keys and stats for telemetry.
 var (
 	tagExporterName, _ = tag.NewKey("exporter")
@@ -30,12 +34,15 @@ var (
 	statPutRequests = stats.Int64("kinesis_put_requests", "number of put requests made", stats.UnitDimensionless)
 	statPutBatches  = stats.Int64("kinesis_put_batches", "number of batches pushed to a stream", stats.UnitDimensionless)
 	statPutSpans    = stats.Int64("kinesis_put_spans", "number of spans pushed to a stream", stats.UnitDimensionless)
+	statPutBytes    = stats.Int64("kinesis_put_bytes", "number of bytes pushed to a stream", stats.UnitDimensionless)
 	statPutErrors   = stats.Int64("kinesis_put_errors", "number of errors from put requests", stats.UnitDimensionless)
 	statPutLatency  = stats.Int64("kinesis_put_latency", "time (ms) it took to complete put requests", stats.UnitMilliseconds)
 
 	statDroppedBatches = stats.Int64("kinesis_dropped_batches", "number of batches dropped by producer", stats.UnitDimensionless)
+	statDroppedSpans   = stats.Int64("kinesis_dropped_spans", "number of spans dropped by producer", stats.UnitDimensionless)
+	statDroppedBytes   = stats.Int64("kinesis_dropped_bytes", "number of bytes dropped by producer", stats.UnitDimensionless)
 
-	statDrainSize   = stats.Int64("kinesis_drain_size", "size of batches when drained from queue", stats.UnitBytes)
+	statDrainBytes  = stats.Int64("kinesis_drain_bytes", "size (bytes) of batches when drained from queue", stats.UnitBytes)
 	statDrainLength = stats.Int64("kinesis_drain_length", "number of batches drained from queue", stats.UnitDimensionless)
 )
 
@@ -46,7 +53,7 @@ func metricViews() []*view.View {
 	tagKeys := []tag.Key{tagExporterName, tagStreamName, tagFlushReason}
 
 	// There are some metrics enabled, return the views.
-	putView := &view.View{
+	putRequestsView := &view.View{
 		Name:        statPutRequests.Name(),
 		Measure:     statPutRequests,
 		Description: "Number of put requests made to kinesis.",
@@ -54,7 +61,7 @@ func metricViews() []*view.View {
 		Aggregation: view.Sum(),
 	}
 
-	batchesView := &view.View{
+	putBatchesView := &view.View{
 		Name:        statPutBatches.Name(),
 		Measure:     statPutBatches,
 		Description: "Number of batches pushed to kinesis.",
@@ -62,10 +69,18 @@ func metricViews() []*view.View {
 		Aggregation: view.Sum(),
 	}
 
-	spansView := &view.View{
+	putSpansView := &view.View{
 		Name:        statPutSpans.Name(),
 		Measure:     statPutSpans,
 		Description: "Number of spans pushed to kinesis.",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
+	putBytesView := &view.View{
+		Name:        statPutBytes.Name(),
+		Measure:     statPutBytes,
+		Description: "Bytes pushed to kinesis.",
 		TagKeys:     tagKeys,
 		Aggregation: view.Sum(),
 	}
@@ -78,7 +93,6 @@ func metricViews() []*view.View {
 		Aggregation: view.Sum(),
 	}
 
-	latencyDistributionAggregation := view.Distribution(10, 25, 50, 75, 100, 250, 500, 750, 1000, 2000, 3000, 4000, 5000, 10000, 20000, 30000, 50000)
 	putLatencyView := &view.View{
 		Name:        statPutLatency.Name(),
 		Measure:     statPutLatency,
@@ -87,7 +101,7 @@ func metricViews() []*view.View {
 		Aggregation: latencyDistributionAggregation,
 	}
 
-	droppedView := &view.View{
+	droppedBatchesView := &view.View{
 		Name:        statDroppedBatches.Name(),
 		Measure:     statDroppedBatches,
 		Description: "Number of batches dropped due to recurring errors.",
@@ -95,9 +109,25 @@ func metricViews() []*view.View {
 		Aggregation: view.Sum(),
 	}
 
-	drainSizeView := &view.View{
-		Name:        statDrainSize.Name(),
-		Measure:     statDrainSize,
+	droppedSpansView := &view.View{
+		Name:        statDroppedSpans.Name(),
+		Measure:     statDroppedSpans,
+		Description: "Number of spans dropped due to recurring errors.",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
+	droppedBytesView := &view.View{
+		Name:        statDroppedBytes.Name(),
+		Measure:     statDroppedBytes,
+		Description: "Bytes dropped due to recurring errors.",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
+	drainBytesView := &view.View{
+		Name:        statDrainBytes.Name(),
+		Measure:     statDrainBytes,
 		Description: "Size (bytes) of aggregated batches.",
 		TagKeys:     tagKeys,
 		Aggregation: view.LastValue(),
@@ -112,7 +142,16 @@ func metricViews() []*view.View {
 	}
 
 	return []*view.View{
-		putView, batchesView, spansView, errorsView, putLatencyView,
-		droppedView, drainSizeView, drainLengthView,
+		putRequestsView,
+		putBatchesView,
+		putBytesView,
+		putSpansView,
+		putLatencyView,
+		errorsView,
+		droppedBatchesView,
+		droppedSpansView,
+		droppedBytesView,
+		drainBytesView,
+		drainLengthView,
 	}
 }
