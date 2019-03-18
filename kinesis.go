@@ -47,6 +47,7 @@ type Options struct {
 	KPLBatchCount           int
 	KPLBacklogCount         int
 	KPLFlushIntervalSeconds int
+	KPLMaxConnections       int
 
 	// Encoding defines the format in which spans should be exporter to kinesis
 	// only Jaeger is supported right now
@@ -107,13 +108,14 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	}
 
 	pr := producer.New(&producer.Config{
-		StreamName:    o.StreamName,
-		BatchSize:     o.KPLBatchSize,
-		BatchCount:    o.KPLBatchCount,
-		BacklogCount:  o.KPLBacklogCount,
-		FlushInterval: time.Second * time.Duration(o.KPLFlushIntervalSeconds),
-		Client:        client,
-		Verbose:       false,
+		StreamName:     o.StreamName,
+		BatchSize:      o.KPLBatchSize,
+		BatchCount:     o.KPLBatchCount,
+		BacklogCount:   o.KPLBacklogCount,
+		MaxConnections: o.KPLMaxConnections,
+		FlushInterval:  time.Second * time.Duration(o.KPLFlushIntervalSeconds),
+		Client:         client,
+		Verbose:        false,
 	}, hooks)
 
 	e := &Exporter{
