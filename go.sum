@@ -108,6 +108,8 @@ github.com/omnition/kinesis-producer v0.4.2-0.20190318221654-26693727180a h1:xvC
 github.com/omnition/kinesis-producer v0.4.2-0.20190318221654-26693727180a/go.mod h1:uvJu7/rW87xg8RfP5FHknQaqxbK10+le4OURS4lmhY4=
 github.com/omnition/kinesis-producer v0.4.2-0.20190318235658-209a46e5fa4b h1:NmXoQwLfdQb45eOExP9rBHweOGHVpgAMTDgpmXWva1g=
 github.com/omnition/kinesis-producer v0.4.2-0.20190318235658-209a46e5fa4b/go.mod h1:uvJu7/rW87xg8RfP5FHknQaqxbK10+le4OURS4lmhY4=
+github.com/omnition/kinesis-producer v0.4.2-0.20190319041204-56294502a83a h1:+83FEXAOe5dnjRs9PFd5M6PpN6eqbbKvbkbQ4aDgM4o=
+github.com/omnition/kinesis-producer v0.4.2-0.20190319041204-56294502a83a/go.mod h1:uvJu7/rW87xg8RfP5FHknQaqxbK10+le4OURS4lmhY4=
 github.com/opentracing/opentracing-go v1.0.2 h1:3jA2P6O1F9UOrWVpwrIo17pu01KWvNWg4X946/Y5Zwg=
 github.com/opentracing/opentracing-go v1.0.2/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/openzipkin/zipkin-go v0.1.1/go.mod h1:NtoC/o8u3JlF1lSlyPNswIbeQH9bJTmOf0Erfk+hxe8=
