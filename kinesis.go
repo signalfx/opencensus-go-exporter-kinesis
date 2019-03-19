@@ -125,6 +125,10 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	e := &Exporter{
 		producers: producers,
 		logger:    logger,
+		hooks: &kinesisHooks{
+			exporterName: o.Name,
+			streamName:   o.StreamName,
+		},
 	}
 
 	v := metricViews()
@@ -154,6 +158,7 @@ type shardProducer struct {
 type Exporter struct {
 	producers []*shardProducer
 	logger    *zap.Logger
+	hooks     *kinesisHooks
 }
 
 // Note: We do not implement trace.Exporter interface yet but it is planned
@@ -166,16 +171,20 @@ func (e *Exporter) Flush() {
 
 // ExportSpan exports a Jaeger protbuf span to Kinesis
 func (e *Exporter) ExportSpan(span *gen.Span) error {
-	traceID := span.TraceID.String()
-	sp, err := e.getShardProducer(span.TraceID.String())
-	if err != nil {
-		return fmt.Errorf("failed to get producer/shard for traceID: ", err)
-	}
-	encoded, err := proto.Marshal(span)
-	if err != nil {
-		return err
-	}
-	return sp.pr.Put(encoded, traceID)
+	e.hooks.OnSpanReceived()
+	go func(span *gen.Span) {
+		traceID := span.TraceID.String()
+		sp, err := e.getShardProducer(span.TraceID.String())
+		if err != nil {
+			fmt.Println("failed to get producer/shard for traceID: ", err)
+		}
+		encoded, err := proto.Marshal(span)
+		if err != nil {
+			fmt.Println("failed to marshal: ", err)
+		}
+		sp.pr.Put(encoded, traceID)
+	}(span)
+	return nil
 }
 
 func (e *Exporter) getShardProducer(partitionKey string) (*shardProducer, error) {

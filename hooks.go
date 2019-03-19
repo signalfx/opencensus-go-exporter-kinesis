@@ -58,3 +58,11 @@ func (h *kinesisHooks) OnDropped(batches, spans, bytes int64) {
 		statDroppedBytes.M(bytes),
 	)
 }
+
+func (h *kinesisHooks) OnSpanReceived() {
+	stats.RecordWithTags(
+		context.Background(),
+		h.tags(),
+		statReceivedSpans.M(1),
+	)
+}
