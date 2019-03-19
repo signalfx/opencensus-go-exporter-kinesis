@@ -91,36 +91,40 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		cfgs = append(cfgs, &aws.Config{Endpoint: aws.String(o.AWSKinesisEndpoint)})
 	}
 	client := kinesis.New(sess, cfgs...)
-	// Make sure stream exists and we can access it. This makes the collector crash
-	// early when misconfigured.
-	_, err := client.DescribeStream(&kinesis.DescribeStreamInput{
-		StreamName: aws.String(o.StreamName),
-		Limit:      aws.Int64(1),
-	})
+
+	shards, err := getShards(client, o.StreamName)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"Kinesis stream %s not available: %s", o.StreamName, err.Error(),
-		)
-	}
-	hooks := &kinesisHooks{
-		o.Name,
-		o.StreamName,
+		return nil, err
 	}
 
-	pr := producer.New(&producer.Config{
-		StreamName:     o.StreamName,
-		BatchSize:      o.KPLBatchSize,
-		BatchCount:     o.KPLBatchCount,
-		BacklogCount:   o.KPLBacklogCount,
-		MaxConnections: o.KPLMaxConnections,
-		FlushInterval:  time.Second * time.Duration(o.KPLFlushIntervalSeconds),
-		Client:         client,
-		Verbose:        false,
-	}, hooks)
+	producers := make([]*shardProducer, 0, len(shards))
+	for _, shard := range shards {
+
+		hooks := &kinesisHooks{
+			o.Name,
+			o.StreamName,
+			shard.shardId,
+		}
+
+		pr := producer.New(&producer.Config{
+			StreamName:     o.StreamName,
+			BatchSize:      o.KPLBatchSize,
+			BatchCount:     o.KPLBatchCount,
+			BacklogCount:   o.KPLBacklogCount,
+			MaxConnections: o.KPLMaxConnections,
+			FlushInterval:  time.Second * time.Duration(o.KPLFlushIntervalSeconds),
+			Client:         client,
+			Verbose:        false,
+		}, hooks)
+		producers = append(producers, &shardProducer{
+			pr:    pr,
+			shard: shard,
+		})
+	}
 
 	e := &Exporter{
-		producer: pr,
-		logger:   logger,
+		producers: producers,
+		logger:    logger,
 	}
 
 	v := metricViews()
@@ -128,43 +132,61 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		return nil, err
 	}
 
-	e.producer.Start()
-	go func() {
-		for r := range e.producer.NotifyFailures() {
-			var errCode string
-			aErr, ok := r.Err.(awserr.Error)
-			if !ok {
-				errCode = r.Err.Error()
-			} else {
-				errCode = aErr.Code()
+	for _, sp := range e.producers {
+		sp.pr.Start()
+		go func() {
+			for r := range sp.pr.NotifyFailures() {
+				err, _ := r.Err.(awserr.Error)
+				logger.Error("err pushing records to kinesis: ", zap.Error(err))
 			}
-			logger.Error("err pushing records to kinesis: ", zap.Error(r.Err))
-			hooks.OnPutErr(errCode)
-		}
-	}()
+		}()
+	}
 
 	return e, nil
 }
 
+type shardProducer struct {
+	pr    *producer.Producer
+	shard *Shard
+}
+
 // Exporter takes spans in jaeger proto format and forwards them to a kinesis stream
 type Exporter struct {
-	producer *producer.Producer
-	logger   *zap.Logger
+	producers []*shardProducer
+	logger    *zap.Logger
 }
 
 // Note: We do not implement trace.Exporter interface yet but it is planned
 // var _ trace.Exporter = (*Exporter)(nil)
-
 func (e *Exporter) Flush() {
-	e.producer.Stop()
+	for _, sp := range e.producers {
+		sp.pr.Stop()
+	}
 }
 
 // ExportSpan exports a Jaeger protbuf span to Kinesis
 func (e *Exporter) ExportSpan(span *gen.Span) error {
+	traceID := span.TraceID.String()
+	sp, err := e.getShardProducer(span.TraceID.String())
+	if err != nil {
+		return fmt.Errorf("failed to get producer/shard for traceID: ", err)
+	}
 	encoded, err := proto.Marshal(span)
 	if err != nil {
 		return err
 	}
+	return sp.pr.Put(encoded, traceID)
+}
 
-	return e.producer.Put(encoded, span.TraceID.String())
+func (e *Exporter) getShardProducer(partitionKey string) (*shardProducer, error) {
+	for _, sp := range e.producers {
+		ok, err := sp.shard.belongsToShard(partitionKey)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return sp, nil
+		}
+	}
+	return nil, fmt.Errorf("no shard found for parition key %s", partitionKey)
 }
