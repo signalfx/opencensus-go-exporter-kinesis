@@ -48,6 +48,7 @@ type Options struct {
 	KPLBacklogCount         int
 	KPLFlushIntervalSeconds int
 	KPLMaxConnections       int
+	QueueSize               int
 
 	// Encoding defines the format in which spans should be exporter to kinesis
 	// only Jaeger is supported right now
@@ -66,6 +67,9 @@ func (o Options) isValidEncoding() bool {
 // NewExporter returns a trace.Exporter implementation that exports
 // the collected spans to Jaeger.
 func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
+	if o.QueueSize == 0 {
+		o.QueueSize = 10000
+	}
 	if o.AWSRegion == "" {
 		return nil, errors.New("missing AWS Region for Kinesis exporter")
 	}
@@ -129,6 +133,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 			exporterName: o.Name,
 			streamName:   o.StreamName,
 		},
+		queue: make(chan *gen.Span, o.QueueSize),
 	}
 
 	v := metricViews()
@@ -138,13 +143,15 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 
 	for _, sp := range e.producers {
 		sp.pr.Start()
-		go func() {
+		go func(sp *shardProducer) {
 			for r := range sp.pr.NotifyFailures() {
 				err, _ := r.Err.(awserr.Error)
 				logger.Error("err pushing records to kinesis: ", zap.Error(err))
 			}
-		}()
+		}(sp)
 	}
+
+	go e.loop()
 
 	return e, nil
 }
@@ -159,6 +166,7 @@ type Exporter struct {
 	producers []*shardProducer
 	logger    *zap.Logger
 	hooks     *kinesisHooks
+	queue     chan *gen.Span
 }
 
 // Note: We do not implement trace.Exporter interface yet but it is planned
@@ -171,8 +179,17 @@ func (e *Exporter) Flush() {
 
 // ExportSpan exports a Jaeger protbuf span to Kinesis
 func (e *Exporter) ExportSpan(span *gen.Span) error {
-	e.hooks.OnSpanReceived()
-	go func(span *gen.Span) {
+	e.queue <- span
+	e.hooks.OnSpanEnqueued()
+	return nil
+}
+
+func (e *Exporter) loop() {
+	// TODO: Add graceful shutdown
+	for {
+		// TODO: check all errors and record metrics
+		span := <-e.queue
+		e.hooks.OnSpanDequeued()
 		traceID := span.TraceID.String()
 		sp, err := e.getShardProducer(span.TraceID.String())
 		if err != nil {
@@ -182,9 +199,11 @@ func (e *Exporter) ExportSpan(span *gen.Span) error {
 		if err != nil {
 			fmt.Println("failed to marshal: ", err)
 		}
-		sp.pr.Put(encoded, traceID)
-	}(span)
-	return nil
+		err = sp.pr.Put(encoded, traceID)
+		if err != nil {
+			fmt.Println("error putting span: ", err)
+		}
+	}
 }
 
 func (e *Exporter) getShardProducer(partitionKey string) (*shardProducer, error) {

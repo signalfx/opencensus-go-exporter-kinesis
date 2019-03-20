@@ -32,7 +32,8 @@ var (
 	tagFlushReason, _  = tag.NewKey("flush_reason")
 	tagErrCode, _      = tag.NewKey("err_code")
 
-	statReceivedSpans = stats.Int64("kinesis_spans_received", "number of spans received by kinesis exporter", stats.UnitDimensionless)
+	statEnqueuedSpans = stats.Int64("kinesis_enqueued_spans", "spans received and put in a queue to be processed by kinesis exporter", stats.UnitDimensionless)
+	statDequeuedSpans = stats.Int64("kinesis_dequeued_spans", "spans taken out of queue and processed by kinesis exporter", stats.UnitDimensionless)
 
 	statPutRequests = stats.Int64("kinesis_put_requests", "number of put requests made", stats.UnitDimensionless)
 	statPutBatches  = stats.Int64("kinesis_put_batches", "number of batches pushed to a stream", stats.UnitDimensionless)
@@ -56,10 +57,18 @@ func metricViews() []*view.View {
 	tagKeys := []tag.Key{tagExporterName, tagStreamName, tagShardId, tagFlushReason}
 
 	// There are some metrics enabled, return the views.
-	receivedSpansView := &view.View{
-		Name:        statReceivedSpans.Name(),
-		Measure:     statReceivedSpans,
-		Description: "Number of spans received by kinesis exporter.",
+	enqueuedSpansView := &view.View{
+		Name:        statEnqueuedSpans.Name(),
+		Measure:     statEnqueuedSpans,
+		Description: "spans received and put in a queue to be processed by kinesis exporter",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
+	dequeuedSpansView := &view.View{
+		Name:        statDequeuedSpans.Name(),
+		Measure:     statDequeuedSpans,
+		Description: "spans taken out of queue and processed by kinesis exporter",
 		TagKeys:     tagKeys,
 		Aggregation: view.Sum(),
 	}
@@ -153,7 +162,8 @@ func metricViews() []*view.View {
 	}
 
 	return []*view.View{
-		receivedSpansView,
+		enqueuedSpansView,
+		dequeuedSpansView,
 		putRequestsView,
 		putBatchesView,
 		putBytesView,
