@@ -1,12 +1,13 @@
 module github.com/omnition/opencensus-go-exporter-kinesis
 
 require (
-	git.apache.org/thrift.git v0.0.0-20181218151757-9b75e4fe745a
+	git.apache.org/thrift.git v0.12.0
 	github.com/aws/aws-sdk-go v1.16.26
 	github.com/davecgh/go-spew v1.1.1
 	github.com/gogo/googleapis v1.1.0 // indirect
 	github.com/gogo/protobuf v1.2.0
 	github.com/golang/protobuf v1.2.0
+	github.com/grpc-ecosystem/grpc-gateway v1.8.5 // indirect
 	github.com/jaegertracing/jaeger v1.8.2
 	github.com/omnition/kinesis-producer v0.4.1
 	github.com/spf13/viper v1.3.1
