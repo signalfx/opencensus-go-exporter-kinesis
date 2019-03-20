@@ -105,15 +105,13 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		return nil, err
 	}
 
+	hooks := &kinesisHooks{
+		exporterName: o.Name,
+		streamName:   o.StreamName,
+	}
+
 	producers := make([]*shardProducer, 0, len(shards))
 	for _, shard := range shards {
-
-		hooks := &kinesisHooks{
-			o.Name,
-			o.StreamName,
-			shard.shardId,
-		}
-
 		pr := producer.New(&producer.Config{
 			StreamName:     o.StreamName,
 			BatchSize:      o.KPLBatchSize,
@@ -133,11 +131,8 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	e := &Exporter{
 		producers: producers,
 		logger:    logger,
-		hooks: &kinesisHooks{
-			exporterName: o.Name,
-			streamName:   o.StreamName,
-		},
-		queue: make(chan *gen.Span, o.QueueSize),
+		queue:     make(chan *gen.Span, o.QueueSize),
+		hooks:     hooks,
 	}
 
 	v := metricViews()
