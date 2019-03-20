@@ -10,7 +10,7 @@ require (
 	github.com/jaegertracing/jaeger v1.8.2
 	github.com/omnition/kinesis-producer v0.4.1
 	github.com/spf13/viper v1.3.1
-	go.opencensus.io v0.18.1-0.20181204023538-aab39bd6a98b
+	go.opencensus.io v0.19.0
 	go.uber.org/zap v1.9.1
 	google.golang.org/api v0.0.0-20181102150758-04bb50b6b83d
 	google.golang.org/genproto v0.0.0-20181101192439-c830210a61df
