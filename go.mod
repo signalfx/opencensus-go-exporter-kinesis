@@ -3,8 +3,7 @@ module github.com/omnition/opencensus-go-exporter-kinesis
 require (
 	git.apache.org/thrift.git v0.0.0-20181101003639-92be4f312b88
 	github.com/aws/aws-sdk-go v1.16.26
-	github.com/census-instrumentation/opencensus-proto v0.1.0-0.20181214143942-ba49f56771b8
-	github.com/census-instrumentation/opencensus-service v0.1.0
+	github.com/census-instrumentation/opencensus-proto v0.2.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/gogo/protobuf v1.2.0
 	github.com/golang/protobuf v1.2.0
