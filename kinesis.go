@@ -43,12 +43,13 @@ type Options struct {
 	AWSRegion               string
 	AWSRole                 string
 	AWSKinesisEndpoint      string
+	QueueSize               int
+	NumWorkers              int
 	KPLBatchSize            int
 	KPLBatchCount           int
 	KPLBacklogCount         int
 	KPLFlushIntervalSeconds int
 	KPLMaxConnections       int
-	QueueSize               int
 
 	// Encoding defines the format in which spans should be exporter to kinesis
 	// only Jaeger is supported right now
@@ -68,7 +69,10 @@ func (o Options) isValidEncoding() bool {
 // the collected spans to Jaeger.
 func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	if o.QueueSize == 0 {
-		o.QueueSize = 10000
+		o.QueueSize = 100000
+	}
+	if o.NumWorkers == 0 {
+		o.NumWorkers = 8
 	}
 	if o.AWSRegion == "" {
 		return nil, errors.New("missing AWS Region for Kinesis exporter")
@@ -151,7 +155,9 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		}(sp)
 	}
 
-	go e.loop()
+	for i := 0; i < o.NumWorkers; i++ {
+		go e.loop()
+	}
 
 	return e, nil
 }
