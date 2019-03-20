@@ -10,13 +10,11 @@ import (
 type kinesisHooks struct {
 	exporterName string
 	streamName   string
-	shardId      string
 }
 
 func (h *kinesisHooks) tags(tags ...tag.Mutator) []tag.Mutator {
 	tags = append(tags, tag.Upsert(tagStreamName, h.streamName))
 	tags = append(tags, tag.Upsert(tagExporterName, h.exporterName))
-	tags = append(tags, tag.Upsert(tagShardId, h.shardId))
 	return tags
 }
 

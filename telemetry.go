@@ -28,7 +28,6 @@ var latencyDistributionAggregation = view.Distribution(
 var (
 	tagExporterName, _ = tag.NewKey("exporter")
 	tagStreamName, _   = tag.NewKey("stream_name")
-	tagShardId, _      = tag.NewKey("shard_id")
 	tagFlushReason, _  = tag.NewKey("flush_reason")
 	tagErrCode, _      = tag.NewKey("err_code")
 
@@ -54,7 +53,7 @@ var (
 
 // MetricViews return the metrics views according to given telemetry level.
 func metricViews() []*view.View {
-	tagKeys := []tag.Key{tagExporterName, tagStreamName, tagShardId, tagFlushReason}
+	tagKeys := []tag.Key{tagExporterName, tagStreamName, tagFlushReason}
 
 	// There are some metrics enabled, return the views.
 	enqueuedSpansView := &view.View{
