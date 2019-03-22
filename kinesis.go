@@ -52,6 +52,7 @@ type Options struct {
 	KPLMaxConnections       int
 	KPLMaxRetries           int
 	KPLMaxBackoffSeconds    int
+	MaxAllowedSizePerSpan   int
 
 	// Encoding defines the format in which spans should be exporter to kinesis
 	// only Jaeger is supported right now
@@ -70,6 +71,11 @@ func (o Options) isValidEncoding() bool {
 // NewExporter returns a trace.Exporter implementation that exports
 // the collected spans to Jaeger.
 func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
+
+	if o.MaxAllowedSizePerSpan == 0 {
+		o.MaxAllowedSizePerSpan = 900000
+	}
+
 	if o.QueueSize == 0 {
 		o.QueueSize = 100000
 	}
@@ -107,13 +113,14 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		return nil, err
 	}
 
-	hooks := &kinesisHooks{
-		exporterName: o.Name,
-		streamName:   o.StreamName,
-	}
-
 	producers := make([]*shardProducer, 0, len(shards))
 	for _, shard := range shards {
+
+		hooks := &kinesisHooks{
+			exporterName: o.Name,
+			streamName:   o.StreamName,
+			shardID:      shard.shardId,
+		}
 		pr := producer.New(&producer.Config{
 			StreamName:     o.StreamName,
 			BatchSize:      o.KPLBatchSize,
@@ -129,14 +136,19 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		producers = append(producers, &shardProducer{
 			pr:    pr,
 			shard: shard,
+			hooks: hooks,
 		})
 	}
 
 	e := &Exporter{
+		options:   &o,
 		producers: producers,
 		logger:    logger,
 		queue:     make(chan *gen.Span, o.QueueSize),
-		hooks:     hooks,
+		hooks: &kinesisHooks{
+			exporterName: o.Name,
+			streamName:   o.StreamName,
+		},
 	}
 
 	v := metricViews()
@@ -164,10 +176,12 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 type shardProducer struct {
 	pr    *producer.Producer
 	shard *Shard
+	hooks *kinesisHooks
 }
 
 // Exporter takes spans in jaeger proto format and forwards them to a kinesis stream
 type Exporter struct {
+	options   *Options
 	producers []*shardProducer
 	logger    *zap.Logger
 	hooks     *kinesisHooks
@@ -193,16 +207,34 @@ func (e *Exporter) loop() {
 	// TODO: Add graceful shutdown
 	for {
 		// TODO: check all errors and record metrics
+		// handle channel closing
 		span := <-e.queue
 		e.hooks.OnSpanDequeued()
 		traceID := span.TraceID.String()
 		sp, err := e.getShardProducer(span.TraceID.String())
 		if err != nil {
 			fmt.Println("failed to get producer/shard for traceID: ", err)
+			continue
 		}
 		encoded, err := proto.Marshal(span)
 		if err != nil {
 			fmt.Println("failed to marshal: ", err)
+			continue
+		}
+		size := len(encoded)
+		if size > e.options.MaxAllowedSizePerSpan {
+			sp.hooks.OnXLSpanDropped(size)
+			span.Tags = []gen.KeyValue{
+				{Key: "omnition.dropped", VBool: true, VType: gen.ValueType_BOOL},
+				{Key: "omnition.dropped.reason", VStr: "unsupported size", VType: gen.ValueType_STRING},
+				{Key: "omnition.dropped.size", VInt64: int64(size), VType: gen.ValueType_INT64},
+			}
+			span.Logs = []gen.Log{}
+			encoded, err = proto.Marshal(span)
+			if err != nil {
+				fmt.Println("failed to modified span: ", err)
+				continue
+			}
 		}
 		err = sp.pr.Put(encoded, traceID)
 		if err != nil {

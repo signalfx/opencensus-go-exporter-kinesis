@@ -28,8 +28,11 @@ var latencyDistributionAggregation = view.Distribution(
 var (
 	tagExporterName, _ = tag.NewKey("exporter")
 	tagStreamName, _   = tag.NewKey("stream_name")
+	tagShardID, _      = tag.NewKey("shard_id")
 	tagFlushReason, _  = tag.NewKey("flush_reason")
 	tagErrCode, _      = tag.NewKey("err_code")
+
+	statXLSpans = stats.Int64("kinesis_xl_span_size", "size of spans bigger than max support size", stats.UnitBytes)
 
 	statEnqueuedSpans = stats.Int64("kinesis_enqueued_spans", "spans received and put in a queue to be processed by kinesis exporter", stats.UnitDimensionless)
 	statDequeuedSpans = stats.Int64("kinesis_dequeued_spans", "spans taken out of queue and processed by kinesis exporter", stats.UnitDimensionless)
@@ -53,9 +56,18 @@ var (
 
 // MetricViews return the metrics views according to given telemetry level.
 func metricViews() []*view.View {
-	tagKeys := []tag.Key{tagExporterName, tagStreamName, tagFlushReason}
+	tagKeys := []tag.Key{tagExporterName, tagStreamName, tagShardID, tagFlushReason}
 
 	// There are some metrics enabled, return the views.
+
+	xlSpansView := &view.View{
+		Name:        statXLSpans.Name(),
+		Measure:     statXLSpans,
+		Description: "size of spans found that were larger than max supported size",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
 	enqueuedSpansView := &view.View{
 		Name:        statEnqueuedSpans.Name(),
 		Measure:     statEnqueuedSpans,
@@ -161,6 +173,7 @@ func metricViews() []*view.View {
 	}
 
 	return []*view.View{
+		xlSpansView,
 		enqueuedSpansView,
 		dequeuedSpansView,
 		putRequestsView,

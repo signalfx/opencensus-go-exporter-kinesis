@@ -10,11 +10,13 @@ import (
 type kinesisHooks struct {
 	exporterName string
 	streamName   string
+	shardID      string
 }
 
 func (h *kinesisHooks) tags(tags ...tag.Mutator) []tag.Mutator {
 	tags = append(tags, tag.Upsert(tagStreamName, h.streamName))
 	tags = append(tags, tag.Upsert(tagExporterName, h.exporterName))
+	tags = append(tags, tag.Upsert(tagShardID, h.shardID))
 	return tags
 }
 
@@ -70,5 +72,13 @@ func (h *kinesisHooks) OnSpanDequeued() {
 		context.Background(),
 		h.tags(),
 		statDequeuedSpans.M(1),
+	)
+}
+
+func (h *kinesisHooks) OnXLSpanDropped(size int) {
+	stats.RecordWithTags(
+		context.Background(),
+		h.tags(),
+		statXLSpans.M(int64(size)),
 	)
 }
