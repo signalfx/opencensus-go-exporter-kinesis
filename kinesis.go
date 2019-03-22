@@ -144,7 +144,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		options:   &o,
 		producers: producers,
 		logger:    logger,
-		queue:     make(chan *gen.Span, o.QueueSize),
+		// queue:     make(chan *gen.Span, o.QueueSize),
 		hooks: &kinesisHooks{
 			exporterName: o.Name,
 			streamName:   o.StreamName,
@@ -166,9 +166,11 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		}(sp)
 	}
 
-	for i := 0; i < o.NumWorkers; i++ {
-		go e.loop()
-	}
+	/*
+		for i := 0; i < o.NumWorkers; i++ {
+			go e.loop()
+		}
+	*/
 
 	return e, nil
 }
@@ -185,7 +187,7 @@ type Exporter struct {
 	producers []*shardProducer
 	logger    *zap.Logger
 	hooks     *kinesisHooks
-	queue     chan *gen.Span
+	// queue     chan *gen.Span
 }
 
 // Note: We do not implement trace.Exporter interface yet but it is planned
@@ -198,11 +200,46 @@ func (e *Exporter) Flush() {
 
 // ExportSpan exports a Jaeger protbuf span to Kinesis
 func (e *Exporter) ExportSpan(span *gen.Span) error {
-	e.queue <- span
 	e.hooks.OnSpanEnqueued()
+	go e.processSpan(span)
 	return nil
 }
 
+func (e *Exporter) processSpan(span *gen.Span) {
+	defer e.hooks.OnSpanDequeued()
+	traceID := span.TraceID.String()
+	sp, err := e.getShardProducer(span.TraceID.String())
+	if err != nil {
+		fmt.Println("failed to get producer/shard for traceID: ", err)
+		return
+	}
+	encoded, err := proto.Marshal(span)
+	if err != nil {
+		fmt.Println("failed to marshal: ", err)
+		return
+	}
+	size := len(encoded)
+	if size > e.options.MaxAllowedSizePerSpan {
+		sp.hooks.OnXLSpanDropped(size)
+		span.Tags = []gen.KeyValue{
+			{Key: "omnition.dropped", VBool: true, VType: gen.ValueType_BOOL},
+			{Key: "omnition.dropped.reason", VStr: "unsupported size", VType: gen.ValueType_STRING},
+			{Key: "omnition.dropped.size", VInt64: int64(size), VType: gen.ValueType_INT64},
+		}
+		span.Logs = []gen.Log{}
+		encoded, err = proto.Marshal(span)
+		if err != nil {
+			fmt.Println("failed to modified span: ", err)
+			return
+		}
+	}
+	err = sp.pr.Put(encoded, traceID)
+	if err != nil {
+		fmt.Println("error putting span: ", err)
+	}
+}
+
+/*
 func (e *Exporter) loop() {
 	// TODO: Add graceful shutdown
 	for {
@@ -242,6 +279,7 @@ func (e *Exporter) loop() {
 		}
 	}
 }
+*/
 
 func (e *Exporter) getShardProducer(partitionKey string) (*shardProducer, error) {
 	for _, sp := range e.producers {
