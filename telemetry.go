@@ -34,22 +34,31 @@ var (
 
 	statXLSpans = stats.Int64("kinesis_xl_span_size", "size of spans bigger than max support size", stats.UnitBytes)
 
+	statFlushedSpans     = stats.Int64("kinesis_flushed_spans", "number of total spans flushed to kinesis exporter", stats.UnitDimensionless)
+	statFlushedSpanLists = stats.Int64("kinesis_flushed_spanlists", "number of spanlists flushed to kinesis exporter", stats.UnitDimensionless)
+	statSpanListBytes    = stats.Int64("kinesis_spanlist_bytes", "size of span list in bytes", stats.UnitBytes)
+
 	statEnqueuedSpans = stats.Int64("kinesis_enqueued_spans", "spans received and put in a queue to be processed by kinesis exporter", stats.UnitDimensionless)
 	statDequeuedSpans = stats.Int64("kinesis_dequeued_spans", "spans taken out of queue and processed by kinesis exporter", stats.UnitDimensionless)
 
 	statPutRequests = stats.Int64("kinesis_put_requests", "number of put requests made", stats.UnitDimensionless)
 	statPutBatches  = stats.Int64("kinesis_put_batches", "number of batches pushed to a stream", stats.UnitDimensionless)
-	statPutSpans    = stats.Int64("kinesis_put_spans", "number of spans pushed to a stream", stats.UnitDimensionless)
-	statPutBytes    = stats.Int64("kinesis_put_bytes", "number of bytes pushed to a stream", stats.UnitDimensionless)
-	statPutErrors   = stats.Int64("kinesis_put_errors", "number of errors from put requests", stats.UnitDimensionless)
-	statPutLatency  = stats.Int64("kinesis_put_latency", "time (ms) it took to complete put requests", stats.UnitMilliseconds)
 
-	statDroppedBatches = stats.Int64("kinesis_dropped_batches", "number of batches dropped by producer", stats.UnitDimensionless)
-	statDroppedSpans   = stats.Int64("kinesis_dropped_spans", "number of spans dropped by producer", stats.UnitDimensionless)
-	statDroppedBytes   = stats.Int64("kinesis_dropped_bytes", "number of bytes dropped by producer", stats.UnitDimensionless)
+	statPutSpanLists = stats.Int64("kinesis_put_spanlists", "number of spanlists pushed to a stream", stats.UnitDimensionless)
+	statPutSpans     = stats.Int64("kinesis_put_spans", "number of spans pushed to a stream", stats.UnitDimensionless)
+	statPutBytes     = stats.Int64("kinesis_put_bytes", "number of bytes pushed to a stream", stats.UnitBytes)
+	statPutErrors    = stats.Int64("kinesis_put_errors", "number of errors from put requests", stats.UnitDimensionless)
+	statPutLatency   = stats.Int64("kinesis_put_latency", "time (ms) it took to complete put requests", stats.UnitMilliseconds)
+
+	statDroppedBatches   = stats.Int64("kinesis_dropped_batches", "number of batches dropped by producer", stats.UnitDimensionless)
+	statDroppedSpanLists = stats.Int64("kinesis_dropped_spanlists", "number of spanlists dropped by producer", stats.UnitDimensionless)
+	statDroppedSpans     = stats.Int64("kinesis_dropped_spans", "number of spans dropped by producer", stats.UnitDimensionless)
+	statDroppedBytes     = stats.Int64("kinesis_dropped_bytes", "number of bytes dropped by producer", stats.UnitDimensionless)
 
 	statDrainBytes  = stats.Int64("kinesis_drain_bytes", "size (bytes) of batches when drained from queue", stats.UnitBytes)
 	statDrainLength = stats.Int64("kinesis_drain_length", "number of batches drained from queue", stats.UnitDimensionless)
+
+	statCompressFactor = stats.Int64("kinesis_compress_factor", "compression factor acheived by spanlists", stats.UnitDimensionless)
 )
 
 // TODO: support telemetry level
@@ -58,7 +67,31 @@ var (
 func metricViews() []*view.View {
 	tagKeys := []tag.Key{tagExporterName, tagStreamName, tagShardID, tagFlushReason}
 
-	// There are some metrics enabled, return the views.
+	// There are some metricskinesis enabled, return the views.
+
+	spansFlushedView := &view.View{
+		Name:        statFlushedSpans.Name(),
+		Measure:     statFlushedSpans,
+		Description: "Number of spans flushed.",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
+	spanListsFlushedView := &view.View{
+		Name:        statFlushedSpanLists.Name(),
+		Measure:     statFlushedSpanLists,
+		Description: "Number of spanlists flushed.",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
+	spanListBytesView := &view.View{
+		Name:        statSpanListBytes.Name(),
+		Measure:     statSpanListBytes,
+		Description: "Size of a spanlist in bytes",
+		TagKeys:     tagKeys,
+		Aggregation: view.LastValue(),
+	}
 
 	xlSpansView := &view.View{
 		Name:        statXLSpans.Name(),
@@ -96,6 +129,14 @@ func metricViews() []*view.View {
 		Name:        statPutBatches.Name(),
 		Measure:     statPutBatches,
 		Description: "Number of batches pushed to kinesis.",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
+	putSpanListsView := &view.View{
+		Name:        statPutSpanLists.Name(),
+		Measure:     statPutSpanLists,
+		Description: "Number of span lists pushed to kinesis.",
 		TagKeys:     tagKeys,
 		Aggregation: view.Sum(),
 	}
@@ -140,6 +181,14 @@ func metricViews() []*view.View {
 		Aggregation: view.Sum(),
 	}
 
+	droppedSpanListsView := &view.View{
+		Name:        statDroppedSpanLists.Name(),
+		Measure:     statDroppedSpanLists,
+		Description: "Number of span lists dropped due to recurring errors.",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
 	droppedSpansView := &view.View{
 		Name:        statDroppedSpans.Name(),
 		Measure:     statDroppedSpans,
@@ -172,7 +221,21 @@ func metricViews() []*view.View {
 		Aggregation: view.LastValue(),
 	}
 
+	compressFactorView := &view.View{
+		Name:        statCompressFactor.Name(),
+		Measure:     statCompressFactor,
+		Description: "compression factor acheived per spanlist",
+		TagKeys:     tagKeys,
+		Aggregation: view.LastValue(),
+	}
+
 	return []*view.View{
+		compressFactorView,
+		spansFlushedView,
+		spanListsFlushedView,
+		spanListBytesView,
+		putSpanListsView,
+		droppedSpanListsView,
 		xlSpansView,
 		enqueuedSpansView,
 		dequeuedSpansView,

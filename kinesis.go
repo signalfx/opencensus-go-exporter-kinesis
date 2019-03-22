@@ -21,11 +21,11 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/gogo/protobuf/proto"
+
 	gen "github.com/jaegertracing/jaeger/model"
 	producer "github.com/omnition/kinesis-producer"
 	"go.opencensus.io/stats/view"
@@ -45,8 +45,10 @@ type Options struct {
 	AWSKinesisEndpoint      string
 	QueueSize               int
 	NumWorkers              int
-	KPLAggregateBatchSize   int
+	MaxListSize             int
+	ListFlushInterval       int
 	KPLAggregateBatchCount  int
+	KPLAggregateBatchSize   int
 	KPLBatchSize            int
 	KPLBatchCount           int
 	KPLBacklogCount         int
@@ -73,6 +75,14 @@ func (o Options) isValidEncoding() bool {
 // NewExporter returns a trace.Exporter implementation that exports
 // the collected spans to Jaeger.
 func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
+
+	if o.MaxListSize == 0 {
+		o.MaxListSize = 100000
+	}
+
+	if o.ListFlushInterval == 0 {
+		o.ListFlushInterval = 5
+	}
 
 	if o.MaxAllowedSizePerSpan == 0 {
 		o.MaxAllowedSizePerSpan = 900000
@@ -138,9 +148,12 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 			Verbose:             false,
 		}, hooks)
 		producers = append(producers, &shardProducer{
-			pr:    pr,
-			shard: shard,
-			hooks: hooks,
+			pr:            pr,
+			shard:         shard,
+			hooks:         hooks,
+			maxSize:       uint64(o.MaxListSize),
+			flushInterval: time.Duration(o.ListFlushInterval) * time.Second,
+			partitionKey:  shard.startingHashKey.String(),
 		})
 	}
 
@@ -161,13 +174,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	}
 
 	for _, sp := range e.producers {
-		sp.pr.Start()
-		go func(sp *shardProducer) {
-			for r := range sp.pr.NotifyFailures() {
-				err, _ := r.Err.(awserr.Error)
-				logger.Error("err pushing records to kinesis: ", zap.Error(err))
-			}
-		}(sp)
+		sp.start()
 	}
 
 	/*
@@ -177,12 +184,6 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	*/
 
 	return e, nil
-}
-
-type shardProducer struct {
-	pr    *producer.Producer
-	shard *Shard
-	hooks *kinesisHooks
 }
 
 // Exporter takes spans in jaeger proto format and forwards them to a kinesis stream
@@ -211,7 +212,6 @@ func (e *Exporter) ExportSpan(span *gen.Span) error {
 
 func (e *Exporter) processSpan(span *gen.Span) {
 	defer e.hooks.OnSpanDequeued()
-	traceID := span.TraceID.String()
 	sp, err := e.getShardProducer(span.TraceID.String())
 	if err != nil {
 		fmt.Println("failed to get producer/shard for traceID: ", err)
@@ -236,8 +236,10 @@ func (e *Exporter) processSpan(span *gen.Span) {
 			fmt.Println("failed to modified span: ", err)
 			return
 		}
+		size = len(encoded)
 	}
-	err = sp.pr.Put(encoded, traceID)
+	// err = sp.pr.Put(encoded, traceID)
+	err = sp.put(span, uint64(size))
 	if err != nil {
 		fmt.Println("error putting span: ", err)
 	}
@@ -250,37 +252,7 @@ func (e *Exporter) loop() {
 		// TODO: check all errors and record metrics
 		// handle channel closing
 		span := <-e.queue
-		e.hooks.OnSpanDequeued()
-		traceID := span.TraceID.String()
-		sp, err := e.getShardProducer(span.TraceID.String())
-		if err != nil {
-			fmt.Println("failed to get producer/shard for traceID: ", err)
-			continue
-		}
-		encoded, err := proto.Marshal(span)
-		if err != nil {
-			fmt.Println("failed to marshal: ", err)
-			continue
-		}
-		size := len(encoded)
-		if size > e.options.MaxAllowedSizePerSpan {
-			sp.hooks.OnXLSpanDropped(size)
-			span.Tags = []gen.KeyValue{
-				{Key: "omnition.dropped", VBool: true, VType: gen.ValueType_BOOL},
-				{Key: "omnition.dropped.reason", VStr: "unsupported size", VType: gen.ValueType_STRING},
-				{Key: "omnition.dropped.size", VInt64: int64(size), VType: gen.ValueType_INT64},
-			}
-			span.Logs = []gen.Log{}
-			encoded, err = proto.Marshal(span)
-			if err != nil {
-				fmt.Println("failed to modified span: ", err)
-				continue
-			}
-		}
-		err = sp.pr.Put(encoded, traceID)
-		if err != nil {
-			fmt.Println("error putting span: ", err)
-		}
+		e.processSpan(span)
 	}
 }
 */

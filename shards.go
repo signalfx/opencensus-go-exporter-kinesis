@@ -11,6 +11,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/kinesis"
 )
 
+type Shard struct {
+	shardId         string
+	startingHashKey *big.Int
+	endingHashKey   *big.Int
+}
+
 func getShards(k *kinesis.Kinesis, streamName string) ([]*Shard, error) {
 
 	listShardsInput := &kinesis.ListShardsInput{
@@ -51,12 +57,6 @@ func toBigInt(key string) *big.Int {
 	num := big.NewInt(0)
 	num.SetString(key, 10)
 	return num
-}
-
-type Shard struct {
-	shardId         string
-	startingHashKey *big.Int
-	endingHashKey   *big.Int
 }
 
 func (s *Shard) belongsToShard(partitionKey string) (bool, error) {

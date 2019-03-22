@@ -21,7 +21,7 @@ func (h *kinesisHooks) tags(tags ...tag.Mutator) []tag.Mutator {
 }
 
 func (h *kinesisHooks) OnDrain(bytes, length int64) {
-	stats.RecordWithTags(
+	_ = stats.RecordWithTags(
 		context.Background(),
 		h.tags(),
 		statDrainBytes.M(bytes),
@@ -29,38 +29,39 @@ func (h *kinesisHooks) OnDrain(bytes, length int64) {
 	)
 }
 
-func (h *kinesisHooks) OnPutRecords(batches, spans, bytes, putLatencyMS int64, reason string) {
-	stats.RecordWithTags(
+func (h *kinesisHooks) OnPutRecords(batches, spanlists, bytes, putLatencyMS int64, reason string) {
+	_ = stats.RecordWithTags(
 		context.Background(),
 		h.tags(tag.Upsert(tagFlushReason, reason)),
 		statPutRequests.M(1),
 		statPutBatches.M(batches),
-		statPutSpans.M(spans),
+		// statPutSpans.M(spans),
+		statPutSpanLists.M(spanlists),
 		statPutBytes.M(bytes),
 		statPutLatency.M(putLatencyMS),
 	)
 }
 
 func (h *kinesisHooks) OnPutErr(errCode string) {
-	stats.RecordWithTags(
+	_ = stats.RecordWithTags(
 		context.Background(),
 		h.tags(tag.Upsert(tagErrCode, errCode)),
 		statPutErrors.M(1),
 	)
 }
 
-func (h *kinesisHooks) OnDropped(batches, spans, bytes int64) {
-	stats.RecordWithTags(
+func (h *kinesisHooks) OnDropped(batches, spanlists, bytes int64) {
+	_ = stats.RecordWithTags(
 		context.Background(),
 		h.tags(),
 		statDroppedBatches.M(batches),
-		statDroppedSpans.M(spans),
+		statDroppedSpanLists.M(spanlists),
 		statDroppedBytes.M(bytes),
 	)
 }
 
 func (h *kinesisHooks) OnSpanEnqueued() {
-	stats.RecordWithTags(
+	_ = stats.RecordWithTags(
 		context.Background(),
 		h.tags(),
 		statEnqueuedSpans.M(1),
@@ -68,7 +69,7 @@ func (h *kinesisHooks) OnSpanEnqueued() {
 }
 
 func (h *kinesisHooks) OnSpanDequeued() {
-	stats.RecordWithTags(
+	_ = stats.RecordWithTags(
 		context.Background(),
 		h.tags(),
 		statDequeuedSpans.M(1),
@@ -76,9 +77,26 @@ func (h *kinesisHooks) OnSpanDequeued() {
 }
 
 func (h *kinesisHooks) OnXLSpanDropped(size int) {
-	stats.RecordWithTags(
+	_ = stats.RecordWithTags(
 		context.Background(),
 		h.tags(),
 		statXLSpans.M(int64(size)),
+	)
+}
+
+func (h *kinesisHooks) OnPutSpanListFlushed(spans, bytes int64) {
+	_ = stats.RecordWithTags(
+		context.Background(),
+		h.tags(),
+		statFlushedSpans.M(spans),
+		statSpanListBytes.M(bytes),
+	)
+}
+
+func (h *kinesisHooks) OnCompressed(original, compressed int64) {
+	_ = stats.RecordWithTags(
+		context.Background(),
+		h.tags(),
+		statCompressFactor.M(original/compressed),
 	)
 }
