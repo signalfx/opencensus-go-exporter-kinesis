@@ -50,6 +50,8 @@ type Options struct {
 	KPLBacklogCount         int
 	KPLFlushIntervalSeconds int
 	KPLMaxConnections       int
+	KPLMaxRetries           int
+	KPLMaxBackoffSeconds    int
 
 	// Encoding defines the format in which spans should be exporter to kinesis
 	// only Jaeger is supported right now
@@ -119,6 +121,8 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 			BacklogCount:   o.KPLBacklogCount,
 			MaxConnections: o.KPLMaxConnections,
 			FlushInterval:  time.Second * time.Duration(o.KPLFlushIntervalSeconds),
+			MaxRetries:     o.KPLMaxRetries,
+			MaxBackoffTime: time.Second * time.Duration(o.KPLMaxBackoffSeconds),
 			Client:         client,
 			Verbose:        false,
 		}, hooks)
