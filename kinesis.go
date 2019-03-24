@@ -45,6 +45,8 @@ type Options struct {
 	AWSKinesisEndpoint      string
 	QueueSize               int
 	NumWorkers              int
+	KPLAggregateBatchSize   int
+	KPLAggregateBatchCount  int
 	KPLBatchSize            int
 	KPLBatchCount           int
 	KPLBacklogCount         int
@@ -122,16 +124,18 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 			shardID:      shard.shardId,
 		}
 		pr := producer.New(&producer.Config{
-			StreamName:     o.StreamName,
-			BatchSize:      o.KPLBatchSize,
-			BatchCount:     o.KPLBatchCount,
-			BacklogCount:   o.KPLBacklogCount,
-			MaxConnections: o.KPLMaxConnections,
-			FlushInterval:  time.Second * time.Duration(o.KPLFlushIntervalSeconds),
-			MaxRetries:     o.KPLMaxRetries,
-			MaxBackoffTime: time.Second * time.Duration(o.KPLMaxBackoffSeconds),
-			Client:         client,
-			Verbose:        false,
+			StreamName:          o.StreamName,
+			AggregateBatchSize:  o.KPLAggregateBatchSize,
+			AggregateBatchCount: o.KPLAggregateBatchCount,
+			BatchSize:           o.KPLBatchSize,
+			BatchCount:          o.KPLBatchCount,
+			BacklogCount:        o.KPLBacklogCount,
+			MaxConnections:      o.KPLMaxConnections,
+			FlushInterval:       time.Second * time.Duration(o.KPLFlushIntervalSeconds),
+			MaxRetries:          o.KPLMaxRetries,
+			MaxBackoffTime:      time.Second * time.Duration(o.KPLMaxBackoffSeconds),
+			Client:              client,
+			Verbose:             false,
 		}, hooks)
 		producers = append(producers, &shardProducer{
 			pr:    pr,

@@ -63,6 +63,8 @@ github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/omnition/kinesis-producer v0.4.4-0.20190322103752-be53015585fa h1:pwov/MQFekeluhtwWS3/jTvrUUkKTJ6FVDvRnuxP3vM=
 github.com/omnition/kinesis-producer v0.4.4-0.20190322103752-be53015585fa/go.mod h1:BpTxPsr3A/xs76tuhDcVyxFFJtbRs5pYOu+B0BCxdZI=
+github.com/omnition/kinesis-producer v0.4.4 h1:1GLwt1RBPFmafgocdkIn3P6K0TuFFHf6YykIdDu7sE4=
+github.com/omnition/kinesis-producer v0.4.4/go.mod h1:BpTxPsr3A/xs76tuhDcVyxFFJtbRs5pYOu+B0BCxdZI=
 github.com/onsi/ginkgo v1.6.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/ginkgo v1.7.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/gomega v1.4.3/go.mod h1:ex+gbHU/CVuBBDIJjb2X0qEXbFg53c61hWP/1CpauHY=
