@@ -32,7 +32,8 @@ var (
 	tagFlushReason, _  = tag.NewKey("flush_reason")
 	tagErrCode, _      = tag.NewKey("err_code")
 
-	statXLSpans = stats.Int64("kinesis_xl_span_size", "size of spans bigger than max support size", stats.UnitBytes)
+	statXLSpansBytes = stats.Int64("kinesis_xl_span_size", "size of spans bigger than max support size", stats.UnitBytes)
+	statXLSpans = stats.Int64("kinesis_xl_spans", "number of spans found to be bigger than the max support size", stats.UnitDimensionless)
 
 	statFlushedSpans     = stats.Int64("kinesis_flushed_spans", "number of total spans flushed to kinesis exporter", stats.UnitDimensionless)
 	statFlushedSpanLists = stats.Int64("kinesis_flushed_spanlists", "number of spanlists flushed to kinesis exporter", stats.UnitDimensionless)
@@ -93,10 +94,18 @@ func metricViews() []*view.View {
 		Aggregation: view.LastValue(),
 	}
 
+	xlSpansBytesView := &view.View{
+		Name:        statXLSpansBytes.Name(),
+		Measure:     statXLSpansBytes,
+		Description: "size of spans found that were larger than max supported size",
+		TagKeys:     tagKeys,
+		Aggregation: view.Sum(),
+	}
+
 	xlSpansView := &view.View{
 		Name:        statXLSpans.Name(),
 		Measure:     statXLSpans,
-		Description: "size of spans found that were larger than max supported size",
+		Description: "number of spans found that were larger than max supported size",
 		TagKeys:     tagKeys,
 		Aggregation: view.Sum(),
 	}
@@ -236,6 +245,7 @@ func metricViews() []*view.View {
 		spanListBytesView,
 		putSpanListsView,
 		droppedSpanListsView,
+		xlSpansBytesView,
 		xlSpansView,
 		enqueuedSpansView,
 		dequeuedSpansView,

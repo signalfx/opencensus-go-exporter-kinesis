@@ -80,7 +80,8 @@ func (h *kinesisHooks) OnXLSpanDropped(size int) {
 	_ = stats.RecordWithTags(
 		context.Background(),
 		h.tags(),
-		statXLSpans.M(int64(size)),
+		statXLSpansBytes.M(int64(size)),
+		statXLSpans.M(1),
 	)
 }
 
