@@ -11,13 +11,12 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/gogo/protobuf/proto"
 	gen "github.com/jaegertracing/jaeger/model"
-	producer "github.com/omnition/kinesis-producer"
+	producer "github.com/omnition/omnition-kinesis-producer"
 
 	model "github.com/omnition/opencensus-go-exporter-kinesis/models/gen"
 )
 
 var compressedMagicByte = [8]byte{111, 109, 58, 106, 115, 112, 108, 122}
-
 
 type shardProducer struct {
 	sync.RWMutex

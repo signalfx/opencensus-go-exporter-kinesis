@@ -27,7 +27,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	gen "github.com/jaegertracing/jaeger/model"
-	producer "github.com/omnition/kinesis-producer"
+	producer "github.com/omnition/omnition-kinesis-producer"
 	"go.opencensus.io/stats/view"
 	"go.uber.org/zap"
 )
