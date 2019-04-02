@@ -57,7 +57,7 @@ var (
 	statDroppedBytes     = stats.Int64("kinesis_dropped_bytes", "number of bytes dropped by producer", stats.UnitDimensionless)
 
 	statDrainBytes  = stats.Int64("kinesis_drain_bytes", "size (bytes) of batches when drained from queue", stats.UnitBytes)
-	statDrainLength = stats.Int64("kinesis_drain_length", "number of batches drained from queue", stats.UnitDimensionless)
+	statDrainLength = stats.Int64("kinesis_drain_length_batches", "number of batches drained from queue", stats.UnitDimensionless)
 
 	statCompressFactor = stats.Int64("kinesis_compress_factor", "compression factor acheived by spanlists", stats.UnitDimensionless)
 )
