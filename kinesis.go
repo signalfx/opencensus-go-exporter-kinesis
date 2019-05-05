@@ -162,10 +162,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		producers: producers,
 		logger:    logger,
 		// queue:     make(chan *gen.Span, o.QueueSize),
-		hooks: &kinesisHooks{
-			exporterName: o.Name,
-			streamName:   o.StreamName,
-		},
+		hooks: newKinesisHooksOpt(o.Name, o.StreamName),
 	}
 
 	v := metricViews()
@@ -191,7 +188,7 @@ type Exporter struct {
 	options   *Options
 	producers []*shardProducer
 	logger    *zap.Logger
-	hooks     *kinesisHooks
+	hooks     *kinesisHooksOpt
 	// queue     chan *gen.Span
 }
 

@@ -11,6 +11,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/gogo/protobuf/proto"
 	gen "github.com/jaegertracing/jaeger/model"
+
+	// gzip "github.com/klauspost/pgzip"
+
 	producer "github.com/omnition/omnition-kinesis-producer"
 
 	model "github.com/omnition/opencensus-go-exporter-kinesis/models/gen"
@@ -28,6 +31,8 @@ type shardProducer struct {
 	flushInterval time.Duration
 	partitionKey  string
 
+	gzipPool sync.Pool
+
 	spans *model.SpanList
 	size  uint64
 }
@@ -36,6 +41,11 @@ func (sp *shardProducer) start() {
 	sp.spans = &model.SpanList{}
 	sp.size = 0
 	sp.pr.Start()
+	sp.gzipPool = sync.Pool{
+		New: func() interface{} {
+			return gzip.NewWriter(&bytes.Buffer{})
+		},
+	}
 	go sp.flushPeriodically()
 	go func(sp *shardProducer) {
 		for r := range sp.pr.NotifyFailures() {
@@ -84,6 +94,7 @@ func (sp *shardProducer) flush() {
 
 	compressed := sp.compress(encoded)
 	sp.pr.Put(compressed, sp.spans.Spans[0].TraceID.String())
+	// time.Sleep(1 * time.Millisecond)
 
 	sp.hooks.OnCompressed(int64(len(encoded)), int64(len(compressed)))
 	sp.hooks.OnPutSpanListFlushed(int64(len(sp.spans.Spans)), int64(len(compressed)))
@@ -93,10 +104,15 @@ func (sp *shardProducer) flush() {
 }
 
 func (sp *shardProducer) compress(in []byte) []byte {
+
 	var buf bytes.Buffer
 	buf.Write(compressedMagicByte[:])
 
 	zw := gzip.NewWriter(&buf)
+
+	// zw := sp.gzipPool.Get().(*gzip.Writer)
+	// defer sp.gzipPool.Put(zw)
+	// zw.Reset(&buf)
 
 	_, err := zw.Write(in)
 	if err != nil {
@@ -107,6 +123,7 @@ func (sp *shardProducer) compress(in []byte) []byte {
 		log.Fatal(err)
 	}
 
+	// sp.gzipPool.Put(zw)
 	return buf.Bytes()
 }
 
