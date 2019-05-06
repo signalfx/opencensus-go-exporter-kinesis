@@ -12,7 +12,7 @@ require (
 	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/klauspost/pgzip v1.2.1
 	github.com/omnition/omnition-kinesis-producer v0.4.5
-	github.com/opentracing/opentracing-go v1.0.2
+	github.com/opentracing/opentracing-go v1.1.0
 	github.com/pkg/errors v0.8.1 // indirect
 	go.opencensus.io v0.19.1
 	go.uber.org/atomic v1.3.2 // indirect

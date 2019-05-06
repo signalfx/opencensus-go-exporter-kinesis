@@ -127,12 +127,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 
 	producers := make([]*shardProducer, 0, len(shards))
 	for _, shard := range shards {
-
-		hooks := &kinesisHooks{
-			exporterName: o.Name,
-			streamName:   o.StreamName,
-			shardID:      shard.shardId,
-		}
+		hooks := newKinesisHooks(o.Name, o.StreamName, shard.shardId)
 		pr := producer.New(&producer.Config{
 			StreamName:          o.StreamName,
 			AggregateBatchSize:  o.KPLAggregateBatchSize,
@@ -162,7 +157,9 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		producers: producers,
 		logger:    logger,
 		// queue:     make(chan *gen.Span, o.QueueSize),
-		hooks: newKinesisHooksOpt(o.Name, o.StreamName),
+		//hooks: newKinesisHooks(o.Name, o.StreamName),
+		hooks: newKinesisHooks(o.Name, o.StreamName, ""),
+		// hooks: newKinesisHooksOpt(o.Name, o.StreamName, ""),
 	}
 
 	v := metricViews()
@@ -188,7 +185,7 @@ type Exporter struct {
 	options   *Options
 	producers []*shardProducer
 	logger    *zap.Logger
-	hooks     *kinesisHooksOpt
+	hooks     *kinesisHooks
 	// queue     chan *gen.Span
 }
 
@@ -235,6 +232,9 @@ func (e *Exporter) processSpan(span *gen.Span) {
 		}
 		size = len(encoded)
 	}
+	// TODO: See if we can encode only once and put encoded span on the shard producer.
+	// shard producer will have to arrange the bytes exactly as protobuf marshaller would
+	// encode a SpanList object.
 	// err = sp.pr.Put(encoded, traceID)
 	err = sp.put(span, uint64(size))
 	if err != nil {
