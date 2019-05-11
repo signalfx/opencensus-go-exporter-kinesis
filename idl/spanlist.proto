@@ -1,0 +1,9 @@
+syntax="proto3";
+
+package jaeger.model;
+
+import "model.proto";
+
+message SpanList {
+    repeated Span spans = 1;
+}
