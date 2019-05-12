@@ -34,9 +34,12 @@ import (
 	"go.uber.org/zap"
 )
 
-const defaultEncoding = "jaeger-proto"
+const (
+	encodingJaeger = "jaeger-proto"
+	encodingOC     = "oc-proto"
+)
 
-var supportedEncodings = [1]string{defaultEncoding}
+var supportedEncodings = [2]string{encodingJaeger, encodingOC}
 
 // Options are the options to be used when initializing a Jaeger exporter.
 type Options struct {
@@ -105,7 +108,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	}
 
 	if o.Encoding == "" {
-		o.Encoding = defaultEncoding
+		o.Encoding = encodingJaeger
 	}
 
 	if !o.isValidEncoding() {
@@ -151,6 +154,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 			maxSize:       uint64(o.MaxListSize),
 			flushInterval: time.Duration(o.ListFlushInterval) * time.Second,
 			partitionKey:  shard.startingHashKey.String(),
+			isJaeger:      o.Encoding == encodingJaeger,
 		})
 	}
 
@@ -214,7 +218,7 @@ func (e *Exporter) ExportJaegerSpan(span *gen.Span) error {
 // ExportOCSpan exports an OC span to kinesis
 func (e *Exporter) ExportOCSpan(span *tracepb.Span) error {
 	e.hooks.OnSpanEnqueued()
-	go e.processSpan(span)
+	go e.processOCSpan(span)
 	return nil
 }
 
@@ -251,7 +255,7 @@ func (e *Exporter) processJaegerSpan(span *gen.Span) {
 	// shard producer will have to arrange the bytes exactly as protobuf marshaller would
 	// encode a SpanList object.
 	// err = sp.pr.Put(encoded, traceID)
-	err = sp.put(span, uint64(size))
+	err = sp.putJaeger(span, uint64(size))
 	if err != nil {
 		fmt.Println("error putting span: ", err)
 	}
@@ -272,11 +276,10 @@ func (e *Exporter) processOCSpan(span *tracepb.Span) {
 	size := len(encoded)
 	if size > e.options.MaxAllowedSizePerSpan {
 		sp.hooks.OnXLSpanDropped(size)
-		span.Attributes.DroppedAttributesCount += len(span.Attributes.AttributeMap)
 		span.Attributes.AttributeMap = map[string]*tracepb.AttributeValue{
-			"omnition.dropped":        tracepb.AttributeValue_BoolValue{true},
-			"omnition.dropped.reason": tracepb.AttributeValue_StringValue{"unsupported size"},
-			"omnition.dropped.size":   tracepb.AttributeValue_IntValue{int64(size)},
+			"omnition.dropped":        &tracepb.AttributeValue{Value: &tracepb.AttributeValue_BoolValue{true}},
+			"omnition.dropped.reason": &tracepb.AttributeValue{Value: &tracepb.AttributeValue_StringValue{&tracepb.TruncatableString{Value: "unsupported size"}}},
+			"omnition.dropped.size":   &tracepb.AttributeValue{Value: &tracepb.AttributeValue_IntValue{int64(size)}},
 		}
 		encoded, err = proto.Marshal(span)
 		if err != nil {
@@ -289,7 +292,7 @@ func (e *Exporter) processOCSpan(span *tracepb.Span) {
 	// shard producer will have to arrange the bytes exactly as protobuf marshaller would
 	// encode a SpanList object.
 	// err = sp.pr.Put(encoded, traceID)
-	err = sp.put(span, uint64(size))
+	err = sp.putOC(span, uint64(size))
 	if err != nil {
 		fmt.Println("error putting span: ", err)
 	}

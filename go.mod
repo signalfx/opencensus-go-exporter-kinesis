@@ -25,3 +25,5 @@ require (
 	golang.org/x/text v0.3.2 // indirect
 	golang.org/x/tools v0.0.0-20190503185657-3b6f9c0030f7 // indirect
 )
+
+replace github.com/census-instrumentation/opencensus-proto => github.com/omnition/opencensus-proto v0.2.2-spanlist1
