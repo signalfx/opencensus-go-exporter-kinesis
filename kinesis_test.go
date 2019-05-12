@@ -19,6 +19,8 @@ func setup() error {
 		StreamName:         "in_dev_test_tenant",
 		AWSKinesisEndpoint: "http://0.0.0.0:4567",
 		AWSRegion:          "us-west-2",
+		ListFlushInterval:  1,
+		MaxListSize:        1,
 		/*
 			QueueSize               int
 			NumWorkers              int
@@ -60,3 +62,31 @@ func BenchmarkPuts(b *testing.B) {
 		exp.ExportSpan(span)
 	}
 }
+
+/*
+
+func BenchmarkCompress(b *testing.B) {
+		pr := producer.New(&producer.Config{
+			StreamName:          "in_dev_test_tenant",
+			AggregateBatchSize:  1,
+			AggregateBatchCount: 1,
+			BatchSize:           1,
+			BatchCount:          1,
+			BacklogCount:        1,
+			MaxConnections:      24,
+			FlushInterval:       time.Second * time.Duration(1),
+			MaxRetries:          20,
+			MaxBackoffTime:      time.Second * time.Duration(10),
+			Client:              client,
+			Verbose:             false,
+		}, hooks)
+		producers = append(producers, &shardProducer{
+			pr:            pr,
+			shard:         shard,
+			hooks:         newKinesisHooksNoop(o.Name, o.StreamName),
+			maxSize:       uint64(o.MaxListSize),
+			flushInterval: time.Duration(o.ListFlushInterval) * time.Second,
+			partitionKey:  shard.startingHashKey.String(),
+		})
+}
+*/

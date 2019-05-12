@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/gogo/protobuf/proto"
 	gen "github.com/jaegertracing/jaeger/model"
 
@@ -18,6 +17,9 @@ import (
 
 	model "github.com/omnition/opencensus-go-exporter-kinesis/models/gen"
 )
+
+const magicByteSize = 8
+const avgBatchSize = 1000
 
 var compressedMagicByte = [8]byte{111, 109, 58, 106, 115, 112, 108, 122}
 
@@ -31,29 +33,18 @@ type shardProducer struct {
 	flushInterval time.Duration
 	partitionKey  string
 
-	gzipPool sync.Pool
-
-	spans *model.SpanList
-	size  uint64
+	gzipWriter *gzip.Writer
+	spans      *model.SpanList
+	size       uint64
 }
 
 func (sp *shardProducer) start() {
-	sp.spans = &model.SpanList{}
+	sp.gzipWriter = gzip.NewWriter(&bytes.Buffer{})
+	sp.spans = &model.SpanList{Spans: make([]*gen.Span, 0, avgBatchSize)}
 	sp.size = 0
+
 	sp.pr.Start()
-	sp.gzipPool = sync.Pool{
-		New: func() interface{} {
-			return gzip.NewWriter(&bytes.Buffer{})
-		},
-	}
 	go sp.flushPeriodically()
-	go func(sp *shardProducer) {
-		for r := range sp.pr.NotifyFailures() {
-			err, _ := r.Err.(awserr.Error)
-			fmt.Println(err)
-			// TODO: replace logger with recording metrics
-		}
-	}(sp)
 }
 
 func (sp *shardProducer) currentSize() uint64 {
@@ -64,9 +55,7 @@ func (sp *shardProducer) currentSize() uint64 {
 
 func (sp *shardProducer) put(span *gen.Span, size uint64) error {
 	// flush the queue and enqueue new span
-
-	currentSize := sp.currentSize()
-	if currentSize+size >= sp.maxSize {
+	if sp.currentSize()+size >= sp.maxSize {
 		sp.flush()
 	}
 
@@ -94,41 +83,38 @@ func (sp *shardProducer) flush() {
 
 	compressed := sp.compress(encoded)
 	sp.pr.Put(compressed, sp.spans.Spans[0].TraceID.String())
-	// time.Sleep(1 * time.Millisecond)
 
 	sp.hooks.OnCompressed(int64(len(encoded)), int64(len(compressed)))
 	sp.hooks.OnPutSpanListFlushed(int64(len(sp.spans.Spans)), int64(len(compressed)))
 
-	sp.spans = &model.SpanList{}
+	// TODO: iterate over and set items to nil to enable GC on them?
+	// Re-slicing to zero re-uses the same underlying array insead of re-allocating it.
+	// This saves us a huge number of allocations but the downside is that spans from the
+	// underlying array are never GC'ed. This should be okay as they'll be overwritten
+	// anyway as newer spans arrive. This should allow us to make the spanlist consume
+	// a static amount of memory throughout the life of the process.
+	sp.spans.Spans = sp.spans.Spans[:0]
 	sp.size = 0
 }
 
+// compress is unsafe for concurrent usage. caller must protect calls with mutexes
 func (sp *shardProducer) compress(in []byte) []byte {
-
 	var buf bytes.Buffer
 	buf.Write(compressedMagicByte[:])
+	sp.gzipWriter.Reset(&buf)
 
-	zw := gzip.NewWriter(&buf)
-
-	// zw := sp.gzipPool.Get().(*gzip.Writer)
-	// defer sp.gzipPool.Put(zw)
-	// zw.Reset(&buf)
-
-	_, err := zw.Write(in)
+	_, err := sp.gzipWriter.Write(in)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := zw.Close(); err != nil {
+	if err := sp.gzipWriter.Close(); err != nil {
 		log.Fatal(err)
 	}
-
-	// sp.gzipPool.Put(zw)
 	return buf.Bytes()
 }
 
 func (sp *shardProducer) flushPeriodically() {
-	// use ticker
 	ticker := time.NewTicker(sp.flushInterval)
 	for {
 		// add heuristics to not send very small batches unless
