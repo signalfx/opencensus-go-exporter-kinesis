@@ -24,7 +24,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
-	"github.com/gogo/protobuf/proto"
+	tracepb "github.com/census-instrumentation/opencensus-proto/gen-go/trace/v1"
+	gogoproto "github.com/gogo/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 
 	gen "github.com/jaegertracing/jaeger/model"
 	producer "github.com/omnition/omnition-kinesis-producer"
@@ -199,19 +201,32 @@ func (e *Exporter) Flush() {
 
 // ExportSpan exports a Jaeger protbuf span to Kinesis
 func (e *Exporter) ExportSpan(span *gen.Span) error {
+	return e.ExportJaegerSpan(span)
+}
+
+// ExportJaegerSpan exports an OC span to kinesis
+func (e *Exporter) ExportJaegerSpan(span *gen.Span) error {
+	e.hooks.OnSpanEnqueued()
+	go e.processJaegerSpan(span)
+	return nil
+}
+
+// ExportOCSpan exports an OC span to kinesis
+func (e *Exporter) ExportOCSpan(span *tracepb.Span) error {
 	e.hooks.OnSpanEnqueued()
 	go e.processSpan(span)
 	return nil
 }
 
-func (e *Exporter) processSpan(span *gen.Span) {
+func (e *Exporter) processJaegerSpan(span *gen.Span) {
 	defer e.hooks.OnSpanDequeued()
 	sp, err := e.getShardProducer(span.TraceID.String())
 	if err != nil {
 		fmt.Println("failed to get producer/shard for traceID: ", err)
 		return
 	}
-	encoded, err := proto.Marshal(span)
+	// todo: see if we can use span.Size() instead
+	encoded, err := gogoproto.Marshal(span)
 	if err != nil {
 		fmt.Println("failed to marshal: ", err)
 		return
@@ -225,9 +240,47 @@ func (e *Exporter) processSpan(span *gen.Span) {
 			{Key: "omnition.dropped.size", VInt64: int64(size), VType: gen.ValueType_INT64},
 		}
 		span.Logs = []gen.Log{}
-		encoded, err = proto.Marshal(span)
+		encoded, err = gogoproto.Marshal(span)
 		if err != nil {
 			fmt.Println("failed to modified span: ", err)
+			return
+		}
+		size = len(encoded)
+	}
+	// TODO: See if we can encode only once and put encoded span on the shard producer.
+	// shard producer will have to arrange the bytes exactly as protobuf marshaller would
+	// encode a SpanList object.
+	// err = sp.pr.Put(encoded, traceID)
+	err = sp.put(span, uint64(size))
+	if err != nil {
+		fmt.Println("error putting span: ", err)
+	}
+}
+
+func (e *Exporter) processOCSpan(span *tracepb.Span) {
+	defer e.hooks.OnSpanDequeued()
+	sp, err := e.getShardProducer(string(span.TraceId))
+	if err != nil {
+		fmt.Println("failed to get producer/shard for traceID: ", err)
+		return
+	}
+	encoded, err := proto.Marshal(span)
+	if err != nil {
+		fmt.Println("failed to marshal to OC: ", err)
+		return
+	}
+	size := len(encoded)
+	if size > e.options.MaxAllowedSizePerSpan {
+		sp.hooks.OnXLSpanDropped(size)
+		span.Attributes.DroppedAttributesCount += len(span.Attributes.AttributeMap)
+		span.Attributes.AttributeMap = map[string]*tracepb.AttributeValue{
+			"omnition.dropped":        tracepb.AttributeValue_BoolValue{true},
+			"omnition.dropped.reason": tracepb.AttributeValue_StringValue{"unsupported size"},
+			"omnition.dropped.size":   tracepb.AttributeValue_IntValue{int64(size)},
+		}
+		encoded, err = proto.Marshal(span)
+		if err != nil {
+			fmt.Println("failed to encode modified OC span: ", err)
 			return
 		}
 		size = len(encoded)

@@ -3,6 +3,7 @@ module github.com/omnition/opencensus-go-exporter-kinesis
 require (
 	github.com/aws/aws-sdk-go v1.16.26
 	github.com/brianvoe/gofakeit v3.17.0+incompatible
+	github.com/census-instrumentation/opencensus-proto v0.2.0
 	github.com/gogo/googleapis v1.1.0 // indirect
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/protobuf v1.2.0
