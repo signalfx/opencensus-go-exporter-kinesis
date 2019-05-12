@@ -18,6 +18,8 @@ package kinesis // import "github.com/omnition/opencensus-go-exporter-kinesis"
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -156,10 +158,13 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		options:   &o,
 		producers: producers,
 		logger:    logger,
-		// queue:     make(chan *gen.Span, o.QueueSize),
-		//hooks: newKinesisHooks(o.Name, o.StreamName),
-		hooks: newKinesisHooks(o.Name, o.StreamName, ""),
-		// hooks: newKinesisHooksOpt(o.Name, o.StreamName, ""),
+		hooks:     newKinesisHooks(o.Name, o.StreamName, ""),
+		semaphore: nil,
+	}
+
+	maxReceivers, _ := strconv.Atoi(os.Getenv("MAX_KINESIS_RECEIVERS"))
+	if maxReceivers > 0 {
+		e.semaphore = make(chan struct{}, maxReceivers)
 	}
 
 	v := metricViews()
@@ -171,12 +176,6 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		sp.start()
 	}
 
-	/*
-		for i := 0; i < o.NumWorkers; i++ {
-			go e.loop()
-		}
-	*/
-
 	return e, nil
 }
 
@@ -186,26 +185,43 @@ type Exporter struct {
 	producers []*shardProducer
 	logger    *zap.Logger
 	hooks     *kinesisHooks
-	// queue     chan *gen.Span
+	semaphore chan struct{}
 }
 
 // Note: We do not implement trace.Exporter interface yet but it is planned
 // var _ trace.Exporter = (*Exporter)(nil)
+
+// Flush flushes queues and stops exporters
 func (e *Exporter) Flush() {
 	for _, sp := range e.producers {
 		sp.pr.Stop()
+	}
+	close(e.semaphore)
+}
+
+func (e *Exporter) acquire() {
+	if e.semaphore != nil {
+		e.semaphore <- struct{}{}
+	}
+}
+
+func (e *Exporter) release() {
+	if e.semaphore != nil {
+		<-e.semaphore
 	}
 }
 
 // ExportSpan exports a Jaeger protbuf span to Kinesis
 func (e *Exporter) ExportSpan(span *gen.Span) error {
 	e.hooks.OnSpanEnqueued()
+	e.acquire()
 	go e.processSpan(span)
 	return nil
 }
 
 func (e *Exporter) processSpan(span *gen.Span) {
-	defer e.hooks.OnSpanDequeued()
+	defer e.release()
+	e.hooks.OnSpanDequeued()
 	sp, err := e.getShardProducer(span.TraceID.String())
 	if err != nil {
 		fmt.Println("failed to get producer/shard for traceID: ", err)
