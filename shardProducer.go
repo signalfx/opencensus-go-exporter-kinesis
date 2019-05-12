@@ -48,7 +48,7 @@ func (sp *shardProducer) start() {
 	if sp.isJaeger {
 		sp.jSpans = &model.SpanList{Spans: make([]*gen.Span, 0, avgBatchSize)}
 	} else {
-		// sp.ocSpans = &model.SpanList{Spans: make([]*gen.Span, 0, avgBatchSize)}
+		sp.ocSpans = &tracepb.SpanList{Spans: make([]*tracepb.Span, 0, avgBatchSize)}
 	}
 	sp.size = 0
 
