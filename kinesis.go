@@ -18,6 +18,8 @@ package kinesis // import "github.com/omnition/opencensus-go-exporter-kinesis"
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -157,7 +159,12 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		producers: producers,
 		logger:    logger,
 		hooks:     newKinesisHooks(o.Name, o.StreamName, ""),
-		semaphore: make(chan struct{}, 32),
+		semaphore: nil,
+	}
+
+	maxReceivers, _ := strconv.Atoi(os.Getenv("MAX_KINESIS_RECEIVERS"))
+	if maxReceivers > 0 {
+		e.semaphore = make(chan struct{}, maxReceivers)
 	}
 
 	v := metricViews()
@@ -193,11 +200,15 @@ func (e *Exporter) Flush() {
 }
 
 func (e *Exporter) acquire() {
-	e.semaphore <- struct{}{}
+	if e.semaphore != nil {
+		e.semaphore <- struct{}{}
+	}
 }
 
 func (e *Exporter) release() {
-	<-e.semaphore
+	if e.semaphore != nil {
+		<-e.semaphore
+	}
 }
 
 // ExportSpan exports a Jaeger protbuf span to Kinesis
