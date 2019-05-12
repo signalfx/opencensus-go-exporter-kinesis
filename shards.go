@@ -2,9 +2,7 @@ package kinesis
 
 import (
 	"crypto/md5"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"math/big"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -60,21 +58,11 @@ func toBigInt(key string) *big.Int {
 }
 
 func (s *Shard) belongsToShard(partitionKey string) (bool, error) {
-	key, err := s.partitionKeyToHashKey(partitionKey)
-	if err != nil {
-		return false, fmt.Errorf("err hashing partition key: %v", err)
-	}
+	key := s.partitionKeyToHashKey(partitionKey)
 	return key.Cmp(s.startingHashKey) >= 0 && key.Cmp(s.endingHashKey) <= 0, nil
 }
 
-func (s *Shard) partitionKeyToHashKey(partitionKey string) (*big.Int, error) {
-	bi := big.NewInt(0)
-	h := md5.New()
-	_, err := io.WriteString(h, partitionKey)
-	if err != nil {
-		return nil, err
-	}
-	hexstr := hex.EncodeToString(h.Sum(nil))
-	bi.SetString(hexstr, 16)
-	return bi, nil
+func (s *Shard) partitionKeyToHashKey(partitionKey string) *big.Int {
+	b := md5.Sum([]byte(partitionKey))
+	return big.NewInt(0).SetBytes(b[:])
 }
