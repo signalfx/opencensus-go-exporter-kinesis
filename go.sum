@@ -60,6 +60,8 @@ github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/omnition/omnition-kinesis-producer v0.4.5 h1:PViWxVyg3cbfLZV+fvIBn/+AdNWvGlFUfZTia7xkCCE=
 github.com/omnition/omnition-kinesis-producer v0.4.5/go.mod h1:UhBKCuCbBikBOjI1HmHZYhhcUlgqzTdat6d6pX/gx7U=
+github.com/omnition/opencensus-proto v0.2.2-gogo-spanlist h1:iLvD8k2Enw8Qd1HN+dX7zSl0ixgFdY1/xeIBYmswl0c=
+github.com/omnition/opencensus-proto v0.2.2-gogo-spanlist/go.mod h1:aHK6ujzY3nYnUB2fuVdGB2mtnbRFQP3mRhpviyd0MgA=
 github.com/omnition/opencensus-proto v0.2.2-spanlist1 h1:i21xSsjHbLXMN/FwKeLIjp+V75M0IMgXYVTnvydhGuo=
 github.com/omnition/opencensus-proto v0.2.2-spanlist1/go.mod h1:btopxNiq/0uweVv2wlg9P8c7tI27+64Rd71bl7KqQ5E=
 github.com/opentracing/opentracing-go v1.0.2 h1:3jA2P6O1F9UOrWVpwrIo17pu01KWvNWg4X946/Y5Zwg=

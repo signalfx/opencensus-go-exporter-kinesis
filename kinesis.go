@@ -205,13 +205,15 @@ func (e *Exporter) Flush() {
 	close(e.semaphore)
 }
 
-func (e *Exporter) acquire() {
+func (e *Exporter) preProcess() {
+	e.hooks.OnSpanEnqueued()
 	if e.semaphore != nil {
 		e.semaphore <- struct{}{}
 	}
 }
 
-func (e *Exporter) release() {
+func (e *Exporter) postProcess() {
+	e.hooks.OnSpanDequeued()
 	if e.semaphore != nil {
 		<-e.semaphore
 	}
@@ -224,22 +226,20 @@ func (e *Exporter) ExportSpan(span *gen.Span) error {
 
 // ExportJaegerSpan exports an OC span to kinesis
 func (e *Exporter) ExportJaegerSpan(span *gen.Span) error {
-	e.hooks.OnSpanEnqueued()
-	e.acquire()
+	e.preProcess()
 	go e.processJaegerSpan(span)
 	return nil
 }
 
 // ExportOCSpan exports an OC span to kinesis
 func (e *Exporter) ExportOCSpan(span *tracepb.Span) error {
-	e.hooks.OnSpanEnqueued()
-	e.acquire()
+	e.preProcess()
 	go e.processOCSpan(span)
 	return nil
 }
 
 func (e *Exporter) processJaegerSpan(span *gen.Span) {
-	defer e.hooks.OnSpanDequeued()
+	defer e.postProcess()
 	sp, err := e.getShardProducer(span.TraceID.String())
 	if err != nil {
 		fmt.Println("failed to get producer/shard for traceID: ", err)
@@ -278,7 +278,7 @@ func (e *Exporter) processJaegerSpan(span *gen.Span) {
 }
 
 func (e *Exporter) processOCSpan(span *tracepb.Span) {
-	defer e.hooks.OnSpanDequeued()
+	defer e.postProcess()
 	sp, err := e.getShardProducer(string(span.TraceId))
 	if err != nil {
 		fmt.Println("failed to get producer/shard for traceID: ", err)
