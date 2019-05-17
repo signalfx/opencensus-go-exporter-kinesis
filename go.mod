@@ -7,6 +7,7 @@ require (
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/protobuf v1.2.0
 	github.com/grpc-ecosystem/grpc-gateway v1.8.5 // indirect
+	github.com/huichen/murmur v0.0.0-20130808212358-e0489551cf51
 	github.com/jaegertracing/jaeger v1.8.2
 	github.com/klauspost/compress v1.5.0 // indirect
 	github.com/klauspost/cpuid v1.2.1 // indirect
