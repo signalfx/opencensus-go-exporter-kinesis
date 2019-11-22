@@ -13,9 +13,9 @@ import (
 
 	// gzip "github.com/klauspost/pgzip"
 
-	producer "github.com/omnition/omnition-kinesis-producer"
+	producer "github.com/signalfx/omnition-kinesis-producer"
 
-	model "github.com/omnition/opencensus-go-exporter-kinesis/models/gen"
+	model "github.com/signalfx/opencensus-go-exporter-kinesis/models/gen"
 )
 
 const magicByteSize = 8
