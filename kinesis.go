@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Package jaeger contains an OpenCensus tracing exporter for AWS Kinesis.
-package kinesis // import "github.com/omnition/opencensus-go-exporter-kinesis"
+package kinesis // import "github.com/signalfx/opencensus-go-exporter-kinesis"
 
 import (
 	"errors"
@@ -29,7 +29,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	gen "github.com/jaegertracing/jaeger/model"
-	producer "github.com/omnition/omnition-kinesis-producer"
+	producer "github.com/signalfx/omnition-kinesis-producer"
 	"go.opencensus.io/stats/view"
 	"go.uber.org/zap"
 )
