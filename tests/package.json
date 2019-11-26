@@ -1,0 +1,17 @@
+{
+  "name": "kinesis-test-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "kinesalite",
+    "create": "node create_streams.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.486.0",
+    "kinesalite": "^2.0.2"
+  }
+}
