@@ -196,7 +196,9 @@ func (e *Exporter) Flush() {
 	for _, sp := range e.producers {
 		sp.pr.Stop()
 	}
-	close(e.semaphore)
+	if e.semaphore != nil {
+		close(e.semaphore)
+	}
 }
 
 func (e *Exporter) acquire() {
