@@ -15,10 +15,14 @@
 package kinesis
 
 import (
+	"sync"
+
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 )
+
+var registerOnce sync.Once
 
 var latencyDistributionAggregation = view.Distribution(
 	10, 25, 50, 75, 100, 250, 500, 750, 1000, 2000, 3000, 4000, 5000, 10000, 20000, 30000, 50000,
@@ -33,7 +37,7 @@ var (
 	tagErrCode, _      = tag.NewKey("err_code")
 
 	statXLSpansBytes = stats.Int64("kinesis_xl_span_size", "size of spans bigger than max support size", stats.UnitBytes)
-	statXLSpans = stats.Int64("kinesis_xl_spans", "number of spans found to be bigger than the max support size", stats.UnitDimensionless)
+	statXLSpans      = stats.Int64("kinesis_xl_spans", "number of spans found to be bigger than the max support size", stats.UnitDimensionless)
 
 	statFlushedSpans     = stats.Int64("kinesis_flushed_spans", "number of total spans flushed to kinesis exporter", stats.UnitDimensionless)
 	statFlushedSpanLists = stats.Int64("kinesis_flushed_spanlists", "number of spanlists flushed to kinesis exporter", stats.UnitDimensionless)
@@ -261,4 +265,13 @@ func metricViews() []*view.View {
 		drainBytesView,
 		drainLengthView,
 	}
+}
+
+func registerMetricViews() error {
+	var registerErr error
+	registerOnce.Do(func() {
+		v := metricViews()
+		registerErr = view.Register(v...)
+	})
+	return registerErr
 }

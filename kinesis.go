@@ -30,7 +30,6 @@ import (
 
 	gen "github.com/jaegertracing/jaeger/model"
 	producer "github.com/signalfx/omnition-kinesis-producer"
-	"go.opencensus.io/stats/view"
 	"go.uber.org/zap"
 )
 
@@ -167,8 +166,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		e.semaphore = make(chan struct{}, maxReceivers)
 	}
 
-	v := metricViews()
-	if err := view.Register(v...); err != nil {
+	if err := registerMetricViews(); err != nil {
 		return nil, err
 	}
 
