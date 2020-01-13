@@ -58,6 +58,7 @@ type Options struct {
 	KPLMaxRetries           int
 	KPLMaxBackoffSeconds    int
 	MaxAllowedSizePerSpan   int
+	OnReshard               func()
 
 	// Encoding defines the format in which spans should be exporter to kinesis
 	// only Jaeger is supported right now
@@ -130,6 +131,8 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	for _, shard := range shards {
 		hooks := newKinesisHooks(o.Name, o.StreamName, shard.shardId)
 		pr := producer.New(&producer.Config{
+			OnReshard:           o.OnReshard,
+			Shard:               shard.shardId,
 			StreamName:          o.StreamName,
 			AggregateBatchSize:  o.KPLAggregateBatchSize,
 			AggregateBatchCount: o.KPLAggregateBatchCount,

@@ -9,7 +9,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.8.5 // indirect
 	github.com/jaegertracing/jaeger v1.8.2
 	github.com/opentracing/opentracing-go v1.1.0 // indirect
-	github.com/signalfx/omnition-kinesis-producer v0.4.6
+	github.com/signalfx/omnition-kinesis-producer v0.5.0
 	go.opencensus.io v0.19.1
 	go.uber.org/zap v1.9.1
 	golang.org/x/sys v0.0.0-20190502175342-a43fa875dd82 // indirect
