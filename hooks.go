@@ -41,6 +41,20 @@ func (c *tagCache) get(name tag.Key, value string) tag.Mutator {
 	return t
 }
 
+type KinesisHooker interface {
+	OnDrain(bytes, length int64)
+	OnPutRecords(batches, spanlists, bytes, putLatencyMS int64, reason string)
+	OnPutErr(errCode string)
+	OnDropped(batches, spanlists, bytes int64)
+	OnSpanEnqueued()
+	OnSpanDequeued()
+	OnXLSpanDropped(size int)
+	OnPutSpanListFlushed(spans, bytes int64)
+	OnCompressed(original, compressed int64)
+}
+
+var _ KinesisHooker = &kinesisHooks{}
+
 type kinesisHooks struct {
 	exporterName string
 	streamName   string

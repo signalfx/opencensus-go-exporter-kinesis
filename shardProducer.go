@@ -28,7 +28,7 @@ type shardProducer struct {
 
 	pr            *producer.Producer
 	shard         *Shard
-	hooks         *kinesisHooks
+	hooks         KinesisHooker
 	maxSize       uint64
 	flushInterval time.Duration
 	partitionKey  string

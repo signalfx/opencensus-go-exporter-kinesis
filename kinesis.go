@@ -37,6 +37,8 @@ const defaultEncoding = "jaeger-proto"
 
 var supportedEncodings = [1]string{defaultEncoding}
 
+type HookProducer func(name, streamName, shardID string) KinesisHooker
+
 // Options are the options to be used when initializing a Jaeger exporter.
 type Options struct {
 	Name                    string
@@ -58,7 +60,10 @@ type Options struct {
 	KPLMaxRetries           int
 	KPLMaxBackoffSeconds    int
 	MaxAllowedSizePerSpan   int
-	OnReshard               func()
+	// to be called if data is put on an unexpected shard
+	OnReshard func()
+	// if you want to inject your own hooks into the exporter, else th default hooks will be created
+	HookProducer HookProducer
 
 	// Encoding defines the format in which spans should be exporter to kinesis
 	// only Jaeger is supported right now
@@ -112,6 +117,12 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		return nil, fmt.Errorf("invalid option for Encoding. Valid choices are: %v", supportedEncodings)
 	}
 
+	if o.HookProducer == nil {
+		o.HookProducer = func(name, streamName, shardID string) KinesisHooker {
+			return newKinesisHooks(name, streamName, shardID)
+		}
+	}
+
 	sess := session.Must(session.NewSession(aws.NewConfig().WithRegion(o.AWSRegion)))
 	cfgs := []*aws.Config{}
 	if o.AWSRole != "" {
@@ -129,7 +140,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 
 	producers := make([]*shardProducer, 0, len(shards))
 	for _, shard := range shards {
-		hooks := newKinesisHooks(o.Name, o.StreamName, shard.shardId)
+		hooks := o.HookProducer(o.Name, o.StreamName, shard.shardId)
 		pr := producer.New(&producer.Config{
 			OnReshard:           o.OnReshard,
 			Shard:               shard.shardId,
@@ -160,7 +171,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		options:   &o,
 		producers: producers,
 		logger:    logger,
-		hooks:     newKinesisHooks(o.Name, o.StreamName, ""),
+		hooks:     o.HookProducer(o.Name, o.StreamName, ""),
 		semaphore: nil,
 	}
 
@@ -185,7 +196,7 @@ type Exporter struct {
 	options   *Options
 	producers []*shardProducer
 	logger    *zap.Logger
-	hooks     *kinesisHooks
+	hooks     KinesisHooker
 	semaphore chan struct{}
 }
 
