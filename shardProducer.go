@@ -27,11 +27,9 @@ type shardProducer struct {
 	sync.RWMutex
 
 	pr            *producer.Producer
-	shard         *Shard
 	hooks         KinesisHooker
 	maxSize       uint64
 	flushInterval time.Duration
-	partitionKey  string
 
 	gzipWriter *gzip.Writer
 	spans      *model.SpanList

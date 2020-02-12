@@ -124,7 +124,7 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	}
 
 	sess := session.Must(session.NewSession(aws.NewConfig().WithRegion(o.AWSRegion)))
-	cfgs := []*aws.Config{}
+	var cfgs []*aws.Config
 	if o.AWSRole != "" {
 		cfgs = append(cfgs, &aws.Config{Credentials: stscreds.NewCredentials(sess, o.AWSRole)})
 	}
@@ -133,13 +133,13 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	}
 	client := kinesis.New(sess, cfgs...)
 
-	shards, err := getShards(client, o.StreamName)
+	shardInfo, err := getShardInfo(client, o.StreamName)
 	if err != nil {
 		return nil, err
 	}
 
-	producers := make([]*shardProducer, 0, len(shards))
-	for _, shard := range shards {
+	producers := make([]*shardProducer, 0, len(shardInfo.shards))
+	for _, shard := range shardInfo.shards {
 		hooks := o.HookProducer(o.Name, o.StreamName, shard.shardId)
 		pr := producer.New(&producer.Config{
 			OnReshard:           o.OnReshard,
@@ -159,15 +159,14 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		}, hooks)
 		producers = append(producers, &shardProducer{
 			pr:            pr,
-			shard:         shard,
 			hooks:         hooks,
 			maxSize:       uint64(o.MaxListSize),
 			flushInterval: time.Duration(o.ListFlushInterval) * time.Second,
-			partitionKey:  shard.startingHashKey.String(),
 		})
 	}
 
 	e := &Exporter{
+		shardInfo: shardInfo,
 		options:   &o,
 		producers: producers,
 		logger:    logger,
@@ -198,6 +197,7 @@ type Exporter struct {
 	logger    *zap.Logger
 	hooks     KinesisHooker
 	semaphore chan struct{}
+	shardInfo *ShardInfo
 }
 
 // Note: We do not implement trace.Exporter interface yet but it is planned
@@ -284,15 +284,13 @@ func (e *Exporter) loop() {
 }
 */
 
-func (e *Exporter) getShardProducer(partitionKey string) (*shardProducer, error) {
-	for _, sp := range e.producers {
-		ok, err := sp.shard.belongsToShard(partitionKey)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			return sp, nil
-		}
+func (e *Exporter) getShardProducer(traceID string) (*shardProducer, error) {
+	i, err := e.shardInfo.getIndex(traceID)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("no shard found for parition key %s", partitionKey)
+	if i > len(e.producers)-1 {
+		return nil, fmt.Errorf("no shard found for parition key %s, came up with %d", traceID, i)
+	}
+	return e.producers[i], nil
 }
