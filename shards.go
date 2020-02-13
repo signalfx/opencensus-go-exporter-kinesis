@@ -10,12 +10,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/kinesis"
 )
 
+// Shard holds the information for a kinesis shard
 type Shard struct {
-	shardId         string
+	shardID         string
 	startingHashKey *big.Int
 	endingHashKey   *big.Int
 }
 
+// ShardInfo provides a way to find the index for which shard to put a span in
 type ShardInfo struct {
 	shiftLen uint    // number of bits to shift to get to an int
 	shards   []Shard // use for names and backup if not a power of 2
@@ -54,7 +56,7 @@ func getShardInfo(k *kinesis.Kinesis, streamName string) (*ShardInfo, error) {
 	for {
 		resp, err := k.ListShards(listShardsInput)
 		if err != nil {
-			return nil, fmt.Errorf("ListShards error: %v", err)
+			return nil, fmt.Errorf("listShards error: %v", err)
 		}
 
 		for _, s := range resp.Shards {
@@ -63,54 +65,17 @@ func getShardInfo(k *kinesis.Kinesis, streamName string) (*ShardInfo, error) {
 				continue
 			}
 			s := Shard{
-				shardId:         *s.ShardId,
+				shardID:         *s.ShardId,
 				startingHashKey: toBigInt(*s.HashKeyRange.StartingHashKey),
 				endingHashKey:   toBigInt(*s.HashKeyRange.EndingHashKey),
 			}
 			ret.shards = append(ret.shards, s)
-			ret.shiftLen = uint(128 - math.Log2(float64(len(ret.shards))))
+		}
+
+		if resp.NextToken == nil {
 			ret.power = math.Ceil(math.Log2(float64(len(ret.shards)))) == math.Floor(math.Log2(float64(len(ret.shards))))
-		}
-
-		if resp.NextToken == nil {
-			//ret.computeBytes()
+			ret.shiftLen = uint(128 - math.Log2(float64(len(ret.shards))))
 			return ret, nil
-		}
-
-		listShardsInput = &kinesis.ListShardsInput{
-			NextToken: resp.NextToken,
-		}
-	}
-}
-
-func getShards(k *kinesis.Kinesis, streamName string) ([]*Shard, error) {
-
-	listShardsInput := &kinesis.ListShardsInput{
-		StreamName: aws.String(streamName),
-		MaxResults: aws.Int64(100),
-	}
-	var shards []*Shard
-
-	for {
-		resp, err := k.ListShards(listShardsInput)
-		if err != nil {
-			return nil, fmt.Errorf("ListShards error: %v", err)
-		}
-
-		for _, s := range resp.Shards {
-			// shard is closed so skip it
-			if s.SequenceNumberRange.EndingSequenceNumber != nil {
-				continue
-			}
-			shards = append(shards, &Shard{
-				shardId:         *s.ShardId,
-				startingHashKey: toBigInt(*s.HashKeyRange.StartingHashKey),
-				endingHashKey:   toBigInt(*s.HashKeyRange.EndingHashKey),
-			})
-		}
-
-		if resp.NextToken == nil {
-			return shards, nil
 		}
 
 		listShardsInput = &kinesis.ListShardsInput{

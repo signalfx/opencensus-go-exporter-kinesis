@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-var xs = [][3]string{
+var xs16 = [][3]string{
 	{"0", "21267647932558653966460912964485513215", "shardId-000000000000"},
 	{"21267647932558653966460912964485513216", "42535295865117307932921825928971026431", "shardId-000000000001"},
 	{"42535295865117307932921825928971026432", "63802943797675961899382738893456539647", "shardId-000000000002"},
@@ -25,27 +27,34 @@ var xs = [][3]string{
 	{"319014718988379809496913694467282698240", "340282366920938463463374607431768211455", "shardId-000000000015"},
 }
 
+var xs4 = [][3]string{
+	{"0", "85070591730234615865843651857942052863", "shardId-000000000000"},
+	{"85070591730234615865843651857942052864", "170141183460469231731687303715884105727", "shardId-000000000001"},
+	{"170141183460469231731687303715884105728", "255211775190703847597530955573826158591", "shardId-000000000002"},
+	{"255211775190703847597530955573826158592", "340282366920938463463374607431768211455", "shardId-000000000003"},
+}
+
+const benchTestTraceID = "bd7a977555f6b982bd7a977555f6b982"
+
 func BenchmarkOGShards(b *testing.B) {
-	partitionKey := "bd7a977555f6b982bd7a977555f6b982"
-	shards := generateV1(xs)
+	shards := generateV1(xs16)
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		v, err := getShardProducerIndex(shards, partitionKey)
+		v, err := getShardProducerIndex(shards, benchTestTraceID)
 		if err != nil || v != 13 {
 			b.Fatal(err)
 		}
 	}
 }
 func BenchmarkNewAShards(b *testing.B) {
-	partitionKey := "bd7a977555f6b982bd7a977555f6b982"
-	shards := generateV2(xs)
+	shards := generateV2(xs16)
 	var v int
 	b.ResetTimer()
 	b.ReportAllocs()
 	var err error
 	for i := 0; i < b.N; i++ {
-		v, err = shards.getIndex(partitionKey)
+		v, err = shards.getIndex(benchTestTraceID)
 		if v != 13 || err != nil {
 			b.Fatal("not 13")
 		}
@@ -53,14 +62,13 @@ func BenchmarkNewAShards(b *testing.B) {
 }
 
 func BenchmarkNewAShardsNoPower(b *testing.B) {
-	partitionKey := "bd7a977555f6b982bd7a977555f6b982"
-	shards := generateV2(xs[1:])
+	shards := generateV2(xs16[1:])
 	var v int
 	b.ResetTimer()
 	b.ReportAllocs()
 	var err error
 	for i := 0; i < b.N; i++ {
-		v, err = shards.getIndex(partitionKey)
+		v, err = shards.getIndex(benchTestTraceID)
 		if v != 12 || err != nil {
 			b.Fatal("not 12")
 		}
@@ -68,14 +76,14 @@ func BenchmarkNewAShardsNoPower(b *testing.B) {
 }
 
 func generateV1(xs [][3]string) []*Shard {
-	var shards []*Shard
-	for _, x := range xs {
+	shards := make([]*Shard, len(xs))
+	for i, x := range xs {
 		s := &Shard{
-			shardId:         x[2],
+			shardID:         x[2],
 			startingHashKey: toBigInt(x[0]),
 			endingHashKey:   toBigInt(x[1]),
 		}
-		shards = append(shards, s)
+		shards[i] = s
 	}
 	return shards
 }
@@ -84,7 +92,7 @@ func generateV2(xs [][3]string) *ShardInfo {
 	ret := &ShardInfo{}
 	for _, x := range xs {
 		s := Shard{
-			shardId:         x[2],
+			shardID:         x[2],
 			startingHashKey: toBigInt(x[0]),
 			endingHashKey:   toBigInt(x[1]),
 		}
@@ -110,20 +118,24 @@ func getShardProducerIndex(ss []*Shard, traceID string) (int, error) {
 	return -1, fmt.Errorf("no shard found for parition key %s", traceID)
 }
 
-func TestSpeed(t *testing.T) {
-
-	//xs := []string{
-	//	"85070591730234615865843651857942052863",
-	//	"170141183460469231731687303715884105727",
-	//	"255211775190703847597530955573826158591",
-	//	"340282366920938463463374607431768211455",
-	//}
-	info := generateV2(xs)
-
-	shards := generateV1(xs)
-	for _, x := range []string{"bd7a977555f6b982", "0000000000000000bd7a977555f6b982", "bd7a977555f6b982bd7a977555f6b982", "0"} {
-		index, _ := getShardProducerIndex(shards, x)
-		index2, _ := info.getIndex(x)
-		fmt.Println(index, index2)
+func TestEquality(t *testing.T) {
+	tests := []struct {
+		name string
+		test [][3]string
+	}{
+		{name: "16 vnodes", test: xs16},
+		{name: "4 vnodes", test: xs4},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			info := generateV2(test.test)
+			shards := generateV1(test.test)
+			for _, x := range []string{"bd7a977555f6b982", "0000000000000000bd7a977555f6b982", "bd7a977555f6b982bd7a977555f6b982", "0"} {
+				index, _ := getShardProducerIndex(shards, x)
+				index2, _ := info.getIndex(x)
+				assert.Equal(t, index, index2)
+			}
+		})
 	}
 }
