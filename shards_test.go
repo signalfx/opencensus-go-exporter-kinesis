@@ -36,7 +36,7 @@ var xs4 = [][3]string{
 
 const benchTestTraceID = "bd7a977555f6b982bd7a977555f6b982"
 
-func BenchmarkOGShards(b *testing.B) {
+func BenchmarkV1Shards(b *testing.B) {
 	shards := generateV1(xs16)
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -47,7 +47,7 @@ func BenchmarkOGShards(b *testing.B) {
 		}
 	}
 }
-func BenchmarkNewAShards(b *testing.B) {
+func BenchmarkV2Shards(b *testing.B) {
 	shards := generateV2(xs16)
 	var v int
 	b.ResetTimer()
@@ -61,7 +61,7 @@ func BenchmarkNewAShards(b *testing.B) {
 	}
 }
 
-func BenchmarkNewAShardsNoPower(b *testing.B) {
+func BenchmarkV2ShardsNoPower(b *testing.B) {
 	shards := generateV2(xs16[1:])
 	var v int
 	b.ResetTimer()
@@ -124,6 +124,7 @@ func TestEquality(t *testing.T) {
 		test [][3]string
 	}{
 		{name: "16 vnodes", test: xs16},
+		{name: "15 vnodes", test: xs16[1:]},
 		{name: "4 vnodes", test: xs4},
 	}
 	for _, test := range tests {

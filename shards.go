@@ -34,12 +34,9 @@ func (s *ShardInfo) getIndex(traceID string) (int, error) {
 		return int(rshift.Int64()), nil
 	}
 	// honestly this should be a tree, but it would have to be a custom one so probably not worth the effort since nearly everyone is a power of 2
-	for i, s := range s.shards {
-		ok, err := s.belongsToShardKey(key)
-		if err != nil {
-			return -1, err
-		}
-		if ok {
+	for i := 0; i < len(s.shards); i++ {
+		sh := s.shards[i]
+		if key.Cmp(sh.endingHashKey) <= 0 {
 			return i, nil
 		}
 	}
