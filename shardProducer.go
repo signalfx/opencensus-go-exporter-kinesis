@@ -18,7 +18,6 @@ import (
 	model "github.com/signalfx/opencensus-go-exporter-kinesis/models/gen"
 )
 
-const magicByteSize = 8
 const avgBatchSize = 1000
 
 var compressedMagicByte = [8]byte{111, 109, 58, 106, 115, 112, 108, 122}
@@ -27,11 +26,9 @@ type shardProducer struct {
 	sync.RWMutex
 
 	pr            *producer.Producer
-	shard         *Shard
 	hooks         KinesisHooker
 	maxSize       uint64
 	flushInterval time.Duration
-	partitionKey  string
 
 	gzipWriter *gzip.Writer
 	spans      *model.SpanList

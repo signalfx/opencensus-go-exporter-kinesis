@@ -14,7 +14,7 @@ var exp *Exporter
 var spans []*model.Span
 
 func setup() error {
-	options := Options{
+	options := &Options{
 		Name:               "test",
 		StreamName:         "in_dev_test_tenant",
 		AWSKinesisEndpoint: "http://0.0.0.0:4567",

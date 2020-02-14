@@ -41,6 +41,7 @@ func (c *tagCache) get(name tag.Key, value string) tag.Mutator {
 	return t
 }
 
+// KinesisHooker interface abstracts away the hook so one can pass in a producer and inject your own implementation
 type KinesisHooker interface {
 	OnDrain(bytes, length int64)
 	OnPutRecords(batches, spanlists, bytes, putLatencyMS int64, reason string)
@@ -58,7 +59,6 @@ var _ KinesisHooker = &kinesisHooks{}
 type kinesisHooks struct {
 	exporterName string
 	streamName   string
-	shardID      string
 	commonTags   []tag.Mutator
 	tagCache     tagCache
 }

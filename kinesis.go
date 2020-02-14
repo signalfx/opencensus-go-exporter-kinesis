@@ -37,6 +37,7 @@ const defaultEncoding = "jaeger-proto"
 
 var supportedEncodings = [1]string{defaultEncoding}
 
+// HookProducer should be a factory for generating KinesisHooker's so you can do your metricization in your own way
 type HookProducer func(name, streamName, shardID string) KinesisHooker
 
 // Options are the options to be used when initializing a Jaeger exporter.
@@ -70,7 +71,7 @@ type Options struct {
 	Encoding string
 }
 
-func (o Options) isValidEncoding() bool {
+func (o *Options) isValidEncoding() bool {
 	for _, e := range supportedEncodings {
 		if e == o.Encoding {
 			return true
@@ -81,8 +82,62 @@ func (o Options) isValidEncoding() bool {
 
 // NewExporter returns a trace.Exporter implementation that exports
 // the collected spans to Jaeger.
-func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
+func NewExporter(o *Options, logger *zap.Logger) (*Exporter, error) {
 
+	exporter, err2 := doBasicConfigSanity(o)
+	if err2 != nil {
+		return exporter, err2
+	}
+
+	if o.HookProducer == nil {
+		o.HookProducer = func(name, streamName, shardID string) KinesisHooker {
+			return newKinesisHooks(name, streamName, shardID)
+		}
+	}
+
+	sess := session.Must(session.NewSession(aws.NewConfig().WithRegion(o.AWSRegion)))
+	var cfgs []*aws.Config
+	if o.AWSRole != "" {
+		cfgs = append(cfgs, &aws.Config{Credentials: stscreds.NewCredentials(sess, o.AWSRole)})
+	}
+	if o.AWSKinesisEndpoint != "" {
+		cfgs = append(cfgs, &aws.Config{Endpoint: aws.String(o.AWSKinesisEndpoint)})
+	}
+	client := kinesis.New(sess, cfgs...)
+
+	shardInfo, err := getShardInfo(client, o.StreamName)
+	if err != nil {
+		return nil, err
+	}
+
+	producers := getShardProducer(shardInfo, o, client)
+
+	e := &Exporter{
+		shardInfo: shardInfo,
+		options:   o,
+		producers: producers,
+		logger:    logger,
+		hooks:     o.HookProducer(o.Name, o.StreamName, ""),
+		semaphore: nil,
+	}
+
+	maxReceivers, _ := strconv.Atoi(os.Getenv("MAX_KINESIS_RECEIVERS"))
+	if maxReceivers > 0 {
+		e.semaphore = make(chan struct{}, maxReceivers)
+	}
+
+	if err := registerMetricViews(); err != nil {
+		return nil, err
+	}
+
+	for _, sp := range e.producers {
+		sp.start()
+	}
+
+	return e, nil
+}
+
+func doBasicConfigSanity(o *Options) (*Exporter, error) {
 	if o.MaxListSize == 0 {
 		o.MaxListSize = 100000
 	}
@@ -116,34 +171,16 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 	if !o.isValidEncoding() {
 		return nil, fmt.Errorf("invalid option for Encoding. Valid choices are: %v", supportedEncodings)
 	}
+	return nil, nil
+}
 
-	if o.HookProducer == nil {
-		o.HookProducer = func(name, streamName, shardID string) KinesisHooker {
-			return newKinesisHooks(name, streamName, shardID)
-		}
-	}
-
-	sess := session.Must(session.NewSession(aws.NewConfig().WithRegion(o.AWSRegion)))
-	cfgs := []*aws.Config{}
-	if o.AWSRole != "" {
-		cfgs = append(cfgs, &aws.Config{Credentials: stscreds.NewCredentials(sess, o.AWSRole)})
-	}
-	if o.AWSKinesisEndpoint != "" {
-		cfgs = append(cfgs, &aws.Config{Endpoint: aws.String(o.AWSKinesisEndpoint)})
-	}
-	client := kinesis.New(sess, cfgs...)
-
-	shards, err := getShards(client, o.StreamName)
-	if err != nil {
-		return nil, err
-	}
-
-	producers := make([]*shardProducer, 0, len(shards))
-	for _, shard := range shards {
-		hooks := o.HookProducer(o.Name, o.StreamName, shard.shardId)
+func getShardProducer(shardInfo *ShardInfo, o *Options, client *kinesis.Kinesis) []*shardProducer {
+	producers := make([]*shardProducer, 0, len(shardInfo.shards))
+	for _, shard := range shardInfo.shards {
+		hooks := o.HookProducer(o.Name, o.StreamName, shard.shardID)
 		pr := producer.New(&producer.Config{
 			OnReshard:           o.OnReshard,
-			Shard:               shard.shardId,
+			Shard:               shard.shardID,
 			StreamName:          o.StreamName,
 			AggregateBatchSize:  o.KPLAggregateBatchSize,
 			AggregateBatchCount: o.KPLAggregateBatchCount,
@@ -159,36 +196,12 @@ func NewExporter(o Options, logger *zap.Logger) (*Exporter, error) {
 		}, hooks)
 		producers = append(producers, &shardProducer{
 			pr:            pr,
-			shard:         shard,
 			hooks:         hooks,
 			maxSize:       uint64(o.MaxListSize),
 			flushInterval: time.Duration(o.ListFlushInterval) * time.Second,
-			partitionKey:  shard.startingHashKey.String(),
 		})
 	}
-
-	e := &Exporter{
-		options:   &o,
-		producers: producers,
-		logger:    logger,
-		hooks:     o.HookProducer(o.Name, o.StreamName, ""),
-		semaphore: nil,
-	}
-
-	maxReceivers, _ := strconv.Atoi(os.Getenv("MAX_KINESIS_RECEIVERS"))
-	if maxReceivers > 0 {
-		e.semaphore = make(chan struct{}, maxReceivers)
-	}
-
-	if err := registerMetricViews(); err != nil {
-		return nil, err
-	}
-
-	for _, sp := range e.producers {
-		sp.start()
-	}
-
-	return e, nil
+	return producers
 }
 
 // Exporter takes spans in jaeger proto format and forwards them to a kinesis stream
@@ -198,6 +211,7 @@ type Exporter struct {
 	logger    *zap.Logger
 	hooks     KinesisHooker
 	semaphore chan struct{}
+	shardInfo *ShardInfo
 }
 
 // Note: We do not implement trace.Exporter interface yet but it is planned
@@ -284,15 +298,13 @@ func (e *Exporter) loop() {
 }
 */
 
-func (e *Exporter) getShardProducer(partitionKey string) (*shardProducer, error) {
-	for _, sp := range e.producers {
-		ok, err := sp.shard.belongsToShard(partitionKey)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			return sp, nil
-		}
+func (e *Exporter) getShardProducer(traceID string) (*shardProducer, error) {
+	i, err := e.shardInfo.getIndex(traceID)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("no shard found for parition key %s", partitionKey)
+	if i > len(e.producers)-1 {
+		return nil, fmt.Errorf("no shard found for parition key %s, came up with %d", traceID, i)
+	}
+	return e.producers[i], nil
 }

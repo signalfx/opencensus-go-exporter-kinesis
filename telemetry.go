@@ -63,7 +63,7 @@ var (
 	statDrainBytes  = stats.Int64("kinesis_drain_bytes", "size (bytes) of batches when drained from queue", stats.UnitBytes)
 	statDrainLength = stats.Int64("kinesis_drain_length", "number of batches drained from queue", stats.UnitDimensionless)
 
-	statCompressFactor = stats.Int64("kinesis_compress_factor", "compression factor acheived by spanlists", stats.UnitDimensionless)
+	statCompressFactor = stats.Int64("kinesis_compress_factor", "compression factor achieved by spanlists", stats.UnitDimensionless)
 )
 
 // TODO: support telemetry level
@@ -237,7 +237,7 @@ func metricViews() []*view.View {
 	compressFactorView := &view.View{
 		Name:        statCompressFactor.Name(),
 		Measure:     statCompressFactor,
-		Description: "compression factor acheived per spanlist",
+		Description: "compression factor achieved per spanlist",
 		TagKeys:     tagKeys,
 		Aggregation: view.LastValue(),
 	}
