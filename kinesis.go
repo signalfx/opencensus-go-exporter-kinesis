@@ -110,7 +110,8 @@ func NewExporter(o *Options, logger *zap.Logger) (*Exporter, error) {
 		return nil, err
 	}
 
-	producers := getShardProducer(shardInfo, o, client)
+	done := make(chan struct{})
+	producers := getShardProducers(shardInfo, o, client, done)
 
 	e := &Exporter{
 		shardInfo: shardInfo,
@@ -118,6 +119,7 @@ func NewExporter(o *Options, logger *zap.Logger) (*Exporter, error) {
 		producers: producers,
 		logger:    logger,
 		hooks:     o.HookProducer(o.Name, o.StreamName, ""),
+		done:      done,
 		semaphore: nil,
 	}
 
@@ -174,7 +176,7 @@ func doBasicConfigSanity(o *Options) (*Exporter, error) {
 	return nil, nil
 }
 
-func getShardProducer(shardInfo *ShardInfo, o *Options, client *kinesis.Kinesis) []*shardProducer {
+func getShardProducers(shardInfo *ShardInfo, o *Options, client *kinesis.Kinesis, done chan struct{}) []*shardProducer {
 	producers := make([]*shardProducer, 0, len(shardInfo.shards))
 	for _, shard := range shardInfo.shards {
 		hooks := o.HookProducer(o.Name, o.StreamName, shard.shardID)
@@ -199,6 +201,7 @@ func getShardProducer(shardInfo *ShardInfo, o *Options, client *kinesis.Kinesis)
 			hooks:         hooks,
 			maxSize:       uint64(o.MaxListSize),
 			flushInterval: time.Duration(o.ListFlushInterval) * time.Second,
+			done:          done,
 		})
 	}
 	return producers
@@ -212,6 +215,7 @@ type Exporter struct {
 	hooks     KinesisHooker
 	semaphore chan struct{}
 	shardInfo *ShardInfo
+	done      chan struct{}
 }
 
 // Note: We do not implement trace.Exporter interface yet but it is planned
@@ -219,8 +223,9 @@ type Exporter struct {
 
 // Flush flushes queues and stops exporters
 func (e *Exporter) Flush() {
+	close(e.done)
 	for _, sp := range e.producers {
-		sp.pr.Stop()
+		sp.stop()
 	}
 	if e.semaphore != nil {
 		close(e.semaphore)

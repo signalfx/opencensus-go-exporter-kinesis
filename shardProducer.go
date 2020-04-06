@@ -29,18 +29,25 @@ type shardProducer struct {
 	hooks         KinesisHooker
 	maxSize       uint64
 	flushInterval time.Duration
+	done          chan struct{}
+	wg            sync.WaitGroup
+	gzipWriter    *gzip.Writer
+	spans         *model.SpanList
+	size          uint64
+}
 
-	gzipWriter *gzip.Writer
-	spans      *model.SpanList
-	size       uint64
+func (sp *shardProducer) stop() {
+	sp.wg.Wait()
+	sp.flush()
+	sp.pr.Stop()
 }
 
 func (sp *shardProducer) start() {
 	sp.gzipWriter = gzip.NewWriter(&bytes.Buffer{})
 	sp.spans = &model.SpanList{Spans: make([]*gen.Span, 0, avgBatchSize)}
 	sp.size = 0
-
 	sp.pr.Start()
+	sp.wg.Add(1)
 	go sp.flushPeriodically()
 }
 
@@ -113,13 +120,18 @@ func (sp *shardProducer) compress(in []byte) []byte {
 
 func (sp *shardProducer) flushPeriodically() {
 	ticker := time.NewTicker(sp.flushInterval)
+	defer sp.wg.Done()
 	for {
 		// add heuristics to not send very small batches unless
 		// with too recent records
-		<-ticker.C
-		size := sp.currentSize()
-		if size > 0 {
-			sp.flush()
+		select {
+		case <-ticker.C:
+			size := sp.currentSize()
+			if size > 0 {
+				sp.flush()
+			}
+		case <-sp.done:
+			return
 		}
 	}
 }
