@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sort"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/kinesis"
@@ -17,11 +18,25 @@ type Shard struct {
 	endingHashKey   *big.Int
 }
 
+type shards []Shard
+
+func (s shards) Len() int {
+	return len(s)
+}
+
+func (s shards) Less(i, j int) bool {
+	return s[i].startingHashKey.Cmp(s[j].startingHashKey) < 0
+}
+
+func (s shards) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
 // ShardInfo provides a way to find the index for which shard to put a span in
 type ShardInfo struct {
-	shiftLen uint    // number of bits to shift to get to an int
-	shards   []Shard // use for names and backup if not a power of 2
-	power    bool    // to know if its a power of 2
+	shiftLen uint   // number of bits to shift to get to an int
+	shards   shards // use for names and backup if not a power of 2
+	power    bool   // to know if its a power of 2
 }
 
 func (s *ShardInfo) getIndex(traceID string) (int, error) {
@@ -43,7 +58,11 @@ func (s *ShardInfo) getIndex(traceID string) (int, error) {
 	return -1, fmt.Errorf("no shard found for parition key %s", traceID)
 }
 
-func getShardInfo(k *kinesis.Kinesis, streamName string) (*ShardInfo, error) {
+type kinin interface {
+	ListShards(input *kinesis.ListShardsInput) (*kinesis.ListShardsOutput, error)
+}
+
+func getShardInfo(k kinin, streamName string) (*ShardInfo, error) {
 	listShardsInput := &kinesis.ListShardsInput{
 		StreamName: aws.String(streamName),
 		MaxResults: aws.Int64(100),
@@ -61,15 +80,16 @@ func getShardInfo(k *kinesis.Kinesis, streamName string) (*ShardInfo, error) {
 			if s.SequenceNumberRange.EndingSequenceNumber != nil {
 				continue
 			}
-			s := Shard{
+			sh := Shard{
 				shardID:         *s.ShardId,
 				startingHashKey: toBigInt(*s.HashKeyRange.StartingHashKey),
 				endingHashKey:   toBigInt(*s.HashKeyRange.EndingHashKey),
 			}
-			ret.shards = append(ret.shards, s)
+			ret.shards = append(ret.shards, sh)
 		}
 
 		if resp.NextToken == nil {
+			sort.Sort(ret.shards)
 			ret.power = math.Ceil(math.Log2(float64(len(ret.shards)))) == math.Floor(math.Log2(float64(len(ret.shards))))
 			ret.shiftLen = uint(128 - math.Log2(float64(len(ret.shards))))
 			return ret, nil

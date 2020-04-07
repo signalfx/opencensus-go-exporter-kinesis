@@ -3,18 +3,14 @@ module github.com/signalfx/opencensus-go-exporter-kinesis
 require (
 	github.com/aws/aws-sdk-go v1.16.26
 	github.com/brianvoe/gofakeit v3.17.0+incompatible
-	github.com/gogo/googleapis v1.1.0 // indirect
-	github.com/gogo/protobuf v1.2.1
-	github.com/golang/protobuf v1.2.0
-	github.com/grpc-ecosystem/grpc-gateway v1.8.5 // indirect
-	github.com/jaegertracing/jaeger v1.8.2
-	github.com/opentracing/opentracing-go v1.1.0 // indirect
+	github.com/gogo/protobuf v1.3.1
+	github.com/golang/protobuf v1.3.2
+	github.com/jaegertracing/jaeger v1.15.1
+	github.com/signalfx/golib/v3 v3.3.0
 	github.com/signalfx/omnition-kinesis-producer v0.5.0
-	github.com/stretchr/testify v1.3.0
-	go.opencensus.io v0.19.1
+	github.com/stretchr/testify v1.4.0
+	go.opencensus.io v0.22.2
 	go.uber.org/zap v1.9.1
-	golang.org/x/sys v0.0.0-20190502175342-a43fa875dd82 // indirect
-	golang.org/x/text v0.3.2 // indirect
 )
 
 go 1.12
